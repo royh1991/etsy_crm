@@ -1,12 +1,13 @@
 // Zustand store for Order and Customer management
 import { create } from 'zustand';
 import type { Order, Customer, PipelineStage, OrderFilters, CustomerFilters, OrderNote, CustomerFlag, CustomerFlagType } from '../types';
-import { mockOrders, mockCustomers, getCustomerById } from '../services/mockData';
+import { mockOrders, mockCustomers } from '../services/mockData';
 
 interface OrderStore {
   // Order state
   orders: Order[];
   selectedOrderId: string | null;
+  selectedOrderIds: string[];  // For batch selection
   orderFilters: OrderFilters;
 
   // Customer state
@@ -19,7 +20,7 @@ interface OrderStore {
   isShippingModalOpen: boolean;
   isCustomerDrawerOpen: boolean;
   isFlagModalOpen: boolean;
-  activeView: 'pipeline' | 'customers' | 'analytics';
+  activeView: 'pipeline' | 'customers' | 'analytics' | 'settings';
 
   // Order actions
   setOrders: (orders: Order[]) => void;
@@ -31,6 +32,12 @@ interface OrderStore {
   addOrderTag: (orderId: string, tag: string) => void;
   removeOrderTag: (orderId: string, tag: string) => void;
   updateOrderTracking: (orderId: string, trackingNumber: string, carrier: string) => void;
+  // Batch selection actions
+  toggleOrderSelection: (orderId: string) => void;
+  selectAllOrders: () => void;
+  clearOrderSelection: () => void;
+  batchMoveOrders: (stage: PipelineStage) => void;
+  batchAddTag: (tag: string) => void;
 
   // Customer actions
   setCustomers: (customers: Customer[]) => void;
@@ -49,7 +56,7 @@ interface OrderStore {
   closeCustomerDrawer: () => void;
   openFlagModal: (customerId: string) => void;
   closeFlagModal: () => void;
-  setActiveView: (view: 'pipeline' | 'customers' | 'analytics') => void;
+  setActiveView: (view: 'pipeline' | 'customers' | 'analytics' | 'settings') => void;
 
   // Computed getters
   getOrdersByStage: (stage: PipelineStage) => Order[];
@@ -64,6 +71,7 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
   // Initial state
   orders: mockOrders,
   selectedOrderId: null,
+  selectedOrderIds: [],
   orderFilters: {},
 
   customers: mockCustomers,
@@ -195,6 +203,59 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
       }
       return order;
     })
+  })),
+
+  // Batch selection actions
+  toggleOrderSelection: (orderId) => set((state) => ({
+    selectedOrderIds: state.selectedOrderIds.includes(orderId)
+      ? state.selectedOrderIds.filter(id => id !== orderId)
+      : [...state.selectedOrderIds, orderId]
+  })),
+
+  selectAllOrders: () => set((state) => ({
+    selectedOrderIds: state.orders.map(o => o.id)
+  })),
+
+  clearOrderSelection: () => set({ selectedOrderIds: [] }),
+
+  batchMoveOrders: (stage) => set((state) => {
+    const now = new Date();
+    return {
+      orders: state.orders.map((order) => {
+        if (state.selectedOrderIds.includes(order.id)) {
+          return {
+            ...order,
+            pipelineStage: stage,
+            updatedAt: now,
+            history: [
+              ...order.history,
+              {
+                id: `hist-${Date.now()}-${order.id}`,
+                type: 'moved' as const,
+                description: `Batch moved to ${stage.replace('-', ' ')}`,
+                timestamp: now
+              }
+            ]
+          };
+        }
+        return order;
+      }),
+      selectedOrderIds: []
+    };
+  }),
+
+  batchAddTag: (tag) => set((state) => ({
+    orders: state.orders.map((order) => {
+      if (state.selectedOrderIds.includes(order.id) && !order.tags.includes(tag)) {
+        return {
+          ...order,
+          tags: [...order.tags, tag],
+          updatedAt: new Date()
+        };
+      }
+      return order;
+    }),
+    selectedOrderIds: []
   })),
 
   // Customer actions

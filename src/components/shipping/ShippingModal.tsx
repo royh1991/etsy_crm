@@ -60,7 +60,7 @@ export default function ShippingModal({ order, isOpen, onClose }: ShippingModalP
   const [selectedRate, setSelectedRate] = useState<string>('usps-pm');
   const [addSignature, setAddSignature] = useState(false);
   const [addInsurance, setAddInsurance] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [_isLoading, _setIsLoading] = useState(false); // Reserved for API integration
   const [isPurchasing, setIsPurchasing] = useState(false);
 
   const handlePurchaseLabel = async () => {

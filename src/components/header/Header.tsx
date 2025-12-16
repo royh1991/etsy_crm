@@ -1,3 +1,5 @@
+import { useState, useRef, useEffect } from 'react';
+
 interface HeaderProps {
   onMenuClick: () => void;
   title?: string;
@@ -16,23 +18,42 @@ const SearchIcon = () => (
   </svg>
 );
 
-const EmailIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <rect x="2" y="4" width="16" height="12" rx="2" stroke="#959BA3" strokeWidth="1.5"/>
-    <path d="M2 6L10 11L18 6" stroke="#959BA3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+const SettingsIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
   </svg>
 );
 
-const BellIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <path d="M10 2C7.5 2 5.5 4 5.5 6.5V10L4 12V13H16V12L14.5 10V6.5C14.5 4 12.5 2 10 2Z" stroke="#959BA3" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-    <path d="M8.5 16C8.5 17.1 9.4 18 10.5 18C11.6 18 12.5 17.1 12.5 16" stroke="#959BA3" strokeWidth="1.5" strokeLinecap="round"/>
+const HelpIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <circle cx="12" cy="12" r="10"/>
+    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/>
+  </svg>
+);
+
+const LogoutIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+  </svg>
+);
+
+const StoreIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
+  </svg>
+);
+
+const ChevronIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <polyline points="6 9 12 15 18 9"/>
   </svg>
 );
 
 // Avatar placeholder - yellow background with cartoon character
 const UserAvatar = () => (
-  <div className="w-[32px] h-[32px] rounded-[26px] bg-[#fff2ab] overflow-hidden flex items-center justify-center flex-shrink-0">
+  <div className="w-[32px] h-[32px] rounded-full bg-[#fff2ab] overflow-hidden flex items-center justify-center flex-shrink-0">
     <svg width="27" height="27" viewBox="0 0 27 27" fill="none">
       <circle cx="13.5" cy="10" r="6" fill="#f0c674"/>
       <ellipse cx="13.5" cy="25" rx="10" ry="8" fill="#f0c674"/>
@@ -44,6 +65,21 @@ const UserAvatar = () => (
 );
 
 export default function Header({ onMenuClick, title }: HeaderProps) {
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   return (
     <div className="h-[60px] md:h-[70px] bg-white border-b-2 border-[#f7f7f7] flex items-center justify-between px-[16px] md:px-[24px] flex-shrink-0">
       {/* Left side - Menu button (mobile), Title, and Search Bar */}
@@ -74,30 +110,80 @@ export default function Header({ onMenuClick, title }: HeaderProps) {
         </div>
       </div>
 
-      {/* Right side - Icons and User */}
-      <div className="flex items-center gap-[12px] md:gap-[16px]">
-        {/* Email and Bell icons */}
-        <div className="hidden sm:flex items-center gap-[12px]">
-          <button className="p-[4px] hover:bg-[#f7f7f7] rounded transition-colors">
-            <EmailIcon />
-          </button>
-          <button className="p-[4px] hover:bg-[#f7f7f7] rounded transition-colors">
-            <BellIcon />
-          </button>
-        </div>
-
-        {/* User Profile */}
-        <div className="flex items-center gap-[8px]">
+      {/* Right side - User Profile */}
+      <div className="relative" ref={dropdownRef}>
+        {/* Profile Button */}
+        <button
+          onClick={() => setIsProfileOpen(!isProfileOpen)}
+          className="flex items-center gap-[8px] p-2 hover:bg-[#f7f7f7] rounded-lg transition-colors"
+        >
           <UserAvatar />
-          <div className="hidden sm:flex flex-col">
+          <div className="hidden sm:flex flex-col text-left">
             <span className="text-[12px] font-medium text-black leading-[20px] tracking-[-0.12px]">
-              Alexandra C.
+              My Shop
             </span>
             <span className="text-[10px] text-[#959ba3] leading-[14px] tracking-[-0.1px]">
-              Admin
+              Owner
             </span>
           </div>
-        </div>
+          <ChevronIcon />
+        </button>
+
+        {/* Dropdown Menu */}
+        {isProfileOpen && (
+          <div className="absolute right-0 top-full mt-2 w-[220px] bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+            {/* Shop Info */}
+            <div className="px-4 py-3 border-b border-gray-100">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[#f56400]/10 flex items-center justify-center text-[#f56400]">
+                  <StoreIcon />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-gray-900">My Etsy Shop</p>
+                  <p className="text-xs text-gray-500">Connected to Etsy</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Menu Items */}
+            <div className="py-1">
+              <button
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  setIsProfileOpen(false);
+                  // Settings action - for future implementation
+                }}
+              >
+                <span className="text-gray-400"><SettingsIcon /></span>
+                Settings
+              </button>
+              <button
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                onClick={() => {
+                  setIsProfileOpen(false);
+                  // Help action
+                }}
+              >
+                <span className="text-gray-400"><HelpIcon /></span>
+                Help & Support
+              </button>
+            </div>
+
+            {/* Logout */}
+            <div className="border-t border-gray-100 pt-1">
+              <button
+                className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                onClick={() => {
+                  setIsProfileOpen(false);
+                  // Logout action - for future implementation
+                }}
+              >
+                <LogoutIcon />
+                Sign Out
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 // Mock Data for Etsy CRM
-import type { Order, Customer, PipelineStage, CustomerTier, CustomerFlagType } from '../types';
+import type { Order, Customer, PipelineStage, CustomerFlagType } from '../types';
 
 // ============ Mock Customers ============
 export const mockCustomers: Customer[] = [

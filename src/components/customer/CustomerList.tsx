@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { format } from 'date-fns';
-import type { Customer, CustomerTier } from '../../types';
+import type { CustomerTier } from '../../types';
 import { getTierLabel, getFlagLabel } from '../../types';
 import { useOrderStore } from '../../stores/orderStore';
 
@@ -9,12 +9,6 @@ const SearchIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
     <circle cx="11" cy="11" r="8"/>
     <path d="m21 21-4.35-4.35"/>
-  </svg>
-);
-
-const FilterIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
   </svg>
 );
 
@@ -36,12 +30,6 @@ const FlagIcon = () => (
   </svg>
 );
 
-const ChevronDownIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <polyline points="6 9 12 15 18 9"/>
-  </svg>
-);
-
 interface CustomerListProps {
   onSelectCustomer?: (customerId: string) => void;
 }
@@ -49,7 +37,7 @@ interface CustomerListProps {
 type FilterOption = 'all' | 'repeat' | 'spent_50' | 'spent_100' | 'spent_200' | 'vip' | 'flagged';
 
 export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
-  const { customers, setCustomerFilters, orders } = useOrderStore();
+  const { customers, orders } = useOrderStore();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterOption>('all');
@@ -119,14 +107,15 @@ export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
     return sortOrder === 'desc' ? -comparison : comparison;
   });
 
-  // Get customer's recent orders count
-  const getRecentOrderCount = (customerId: string) => {
+  // Get customer's recent orders count (reserved for future use)
+  const _getRecentOrderCount = (customerId: string) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     return orders.filter(
       o => o.customerId === customerId && new Date(o.orderDate) >= thirtyDaysAgo
     ).length;
   };
+  void _getRecentOrderCount; // Suppress unused warning
 
   const getTierBadgeClass = (tier: CustomerTier) => {
     switch (tier) {

@@ -1,0 +1,453 @@
+import { Router, Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
+import { prisma } from '../utils/prisma.js';
+import { requireAuth } from '../middleware/auth.js';
+import { AppError } from '../middleware/errorHandler.js';
+
+export const ordersRouter = Router();
+
+// All routes require authentication
+ordersRouter.use(requireAuth);
+
+// Validation schemas
+const updateOrderSchema = z.object({
+  pipelineStage: z.enum(['NEW', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'NEEDS_ATTENTION']).optional(),
+  tags: z.array(z.string()).optional(),
+  hasIssue: z.boolean().optional(),
+  issueDescription: z.string().optional(),
+  assignedToId: z.string().nullable().optional()
+});
+
+const addNoteSchema = z.object({
+  content: z.string().min(1),
+  isInternal: z.boolean().optional()
+});
+
+const updateTrackingSchema = z.object({
+  carrierName: z.string(),
+  trackingNumber: z.string(),
+  trackingUrl: z.string().optional()
+});
+
+const batchUpdateSchema = z.object({
+  orderIds: z.array(z.string()),
+  pipelineStage: z.enum(['NEW', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'NEEDS_ATTENTION']).optional(),
+  addTags: z.array(z.string()).optional(),
+  removeTags: z.array(z.string()).optional(),
+  assignedToId: z.string().nullable().optional()
+});
+
+const reorderSchema = z.object({
+  orderId: z.string(),
+  newIndex: z.number()
+});
+
+// GET /api/orders
+ordersRouter.get('/', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { stage, search, shipBy, hasIssue, isGift, tags, limit = '50', offset = '0' } = req.query;
+
+    const where: any = { shopId: req.user!.shopId };
+
+    if (stage) {
+      where.pipelineStage = stage;
+    }
+
+    if (search && typeof search === 'string') {
+      where.OR = [
+        { orderNumber: { contains: search, mode: 'insensitive' } },
+        { customer: { name: { contains: search, mode: 'insensitive' } } },
+        { customer: { email: { contains: search, mode: 'insensitive' } } }
+      ];
+    }
+
+    if (shipBy === 'overdue') {
+      where.shipByDate = { lt: new Date() };
+      where.isShipped = false;
+    } else if (shipBy === 'today') {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      where.shipByDate = { gte: today, lt: tomorrow };
+    }
+
+    if (hasIssue === 'true') where.hasIssue = true;
+    if (isGift === 'true') where.isGift = true;
+
+    if (tags && typeof tags === 'string') {
+      where.tags = { hasSome: tags.split(',') };
+    }
+
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({
+        where,
+        include: {
+          customer: {
+            select: { id: true, name: true, email: true, tier: true, isRepeatCustomer: true }
+          },
+          items: true,
+          assignedTo: {
+            select: { id: true, name: true, avatarUrl: true }
+          },
+          _count: { select: { notes: true } }
+        },
+        orderBy: [{ pipelineStage: 'asc' }, { sortOrder: 'asc' }, { orderedAt: 'desc' }],
+        take: parseInt(limit as string),
+        skip: parseInt(offset as string)
+      }),
+      prisma.order.count({ where })
+    ]);
+
+    res.json({ orders, total, limit: parseInt(limit as string), offset: parseInt(offset as string) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /api/orders/:id
+ordersRouter.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId },
+      include: {
+        customer: true,
+        items: true,
+        notes: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' }
+        },
+        history: {
+          include: { user: { select: { id: true, name: true } } },
+          orderBy: { createdAt: 'desc' }
+        },
+        assignedTo: { select: { id: true, name: true, avatarUrl: true } },
+        shippingLabel: true
+      }
+    });
+
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+
+    res.json(order);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/orders/:id
+ordersRouter.patch('/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const data = updateOrderSchema.parse(req.body);
+
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId }
+    });
+
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+
+    const updates: any = { ...data, updatedAt: new Date() };
+    const historyEntries: any[] = [];
+
+    // Track stage change
+    if (data.pipelineStage && data.pipelineStage !== order.pipelineStage) {
+      historyEntries.push({
+        orderId: order.id,
+        userId: req.user!.id,
+        type: 'STAGE_CHANGED',
+        description: `Stage changed from ${order.pipelineStage} to ${data.pipelineStage}`
+      });
+    }
+
+    // Track issue flag
+    if (data.hasIssue !== undefined && data.hasIssue !== order.hasIssue) {
+      historyEntries.push({
+        orderId: order.id,
+        userId: req.user!.id,
+        type: data.hasIssue ? 'ISSUE_FLAGGED' : 'ISSUE_RESOLVED',
+        description: data.hasIssue
+          ? `Issue flagged: ${data.issueDescription || 'No description'}`
+          : 'Issue resolved'
+      });
+    }
+
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id: req.params.id },
+        data: updates,
+        include: { customer: true, items: true }
+      }),
+      ...(historyEntries.length > 0
+        ? [prisma.orderHistory.createMany({ data: historyEntries })]
+        : [])
+    ]);
+
+    res.json(updatedOrder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/orders/:id/notes
+ordersRouter.post('/:id/notes', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { content, isInternal = true } = addNoteSchema.parse(req.body);
+
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId }
+    });
+
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+
+    const [note] = await prisma.$transaction([
+      prisma.orderNote.create({
+        data: {
+          orderId: order.id,
+          userId: req.user!.id,
+          content,
+          isInternal
+        },
+        include: { user: { select: { id: true, name: true } } }
+      }),
+      prisma.orderHistory.create({
+        data: {
+          orderId: order.id,
+          userId: req.user!.id,
+          type: 'NOTE_ADDED',
+          description: 'Note added'
+        }
+      }),
+      prisma.order.update({
+        where: { id: order.id },
+        data: { updatedAt: new Date() }
+      })
+    ]);
+
+    res.status(201).json(note);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/orders/:id/ship
+ordersRouter.post('/:id/ship', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { carrierName, trackingNumber, trackingUrl } = updateTrackingSchema.parse(req.body);
+
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId }
+    });
+
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+
+    const now = new Date();
+
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id: order.id },
+        data: {
+          carrierName,
+          trackingNumber,
+          trackingUrl,
+          isShipped: true,
+          shippedAt: now,
+          pipelineStage: 'SHIPPED',
+          updatedAt: now
+        },
+        include: { customer: true, items: true }
+      }),
+      prisma.orderHistory.create({
+        data: {
+          orderId: order.id,
+          userId: req.user!.id,
+          type: 'SHIPPED',
+          description: `Shipped via ${carrierName}: ${trackingNumber}`
+        }
+      })
+    ]);
+
+    res.json(updatedOrder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/orders/:id/tags
+ordersRouter.post('/:id/tags', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { tag } = z.object({ tag: z.string() }).parse(req.body);
+
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId }
+    });
+
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+
+    if (order.tags.includes(tag)) {
+      return res.json(order);
+    }
+
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id: order.id },
+        data: { tags: [...order.tags, tag], updatedAt: new Date() }
+      }),
+      prisma.orderHistory.create({
+        data: {
+          orderId: order.id,
+          userId: req.user!.id,
+          type: 'TAG_ADDED',
+          description: `Tag added: ${tag}`
+        }
+      })
+    ]);
+
+    res.json(updatedOrder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// DELETE /api/orders/:id/tags/:tag
+ordersRouter.delete('/:id/tags/:tag', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId }
+    });
+
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+
+    const [updatedOrder] = await prisma.$transaction([
+      prisma.order.update({
+        where: { id: order.id },
+        data: {
+          tags: order.tags.filter(t => t !== req.params.tag),
+          updatedAt: new Date()
+        }
+      }),
+      prisma.orderHistory.create({
+        data: {
+          orderId: order.id,
+          userId: req.user!.id,
+          type: 'TAG_REMOVED',
+          description: `Tag removed: ${req.params.tag}`
+        }
+      })
+    ]);
+
+    res.json(updatedOrder);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// POST /api/orders/batch - Batch update orders
+ordersRouter.post('/batch', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { orderIds, pipelineStage, addTags, removeTags, assignedToId } = batchUpdateSchema.parse(req.body);
+
+    // Verify all orders belong to the shop
+    const orders = await prisma.order.findMany({
+      where: { id: { in: orderIds }, shopId: req.user!.shopId }
+    });
+
+    if (orders.length !== orderIds.length) {
+      throw new AppError(400, 'Some orders not found or not accessible');
+    }
+
+    const updates: any = { updatedAt: new Date() };
+    const historyType = pipelineStage ? 'STAGE_CHANGED' : 'TAG_ADDED';
+
+    if (pipelineStage) updates.pipelineStage = pipelineStage;
+    if (assignedToId !== undefined) updates.assignedToId = assignedToId;
+
+    // Update orders
+    await prisma.$transaction(async (tx) => {
+      for (const order of orders) {
+        let orderUpdates = { ...updates };
+
+        if (addTags || removeTags) {
+          let newTags = [...order.tags];
+          if (addTags) newTags = [...new Set([...newTags, ...addTags])];
+          if (removeTags) newTags = newTags.filter(t => !removeTags.includes(t));
+          orderUpdates.tags = newTags;
+        }
+
+        await tx.order.update({
+          where: { id: order.id },
+          data: orderUpdates
+        });
+
+        await tx.orderHistory.create({
+          data: {
+            orderId: order.id,
+            userId: req.user!.id,
+            type: historyType,
+            description: `Batch update: ${pipelineStage ? `Stage → ${pipelineStage}` : ''} ${addTags ? `+tags: ${addTags.join(', ')}` : ''}`
+          }
+        });
+      }
+    });
+
+    res.json({ updated: orders.length });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PATCH /api/orders/:id/reorder
+ordersRouter.patch('/:id/reorder', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { newIndex } = reorderSchema.parse({ ...req.body, orderId: req.params.id });
+
+    const order = await prisma.order.findFirst({
+      where: { id: req.params.id, shopId: req.user!.shopId }
+    });
+
+    if (!order) {
+      throw new AppError(404, 'Order not found');
+    }
+
+    // Get all orders in the same stage
+    const stageOrders = await prisma.order.findMany({
+      where: { shopId: req.user!.shopId, pipelineStage: order.pipelineStage },
+      orderBy: { sortOrder: 'asc' }
+    });
+
+    // Calculate new sort orders
+    const oldIndex = stageOrders.findIndex(o => o.id === order.id);
+    if (oldIndex === -1 || oldIndex === newIndex) {
+      return res.json(order);
+    }
+
+    // Reorder
+    const reordered = [...stageOrders];
+    const [moved] = reordered.splice(oldIndex, 1);
+    reordered.splice(newIndex, 0, moved);
+
+    // Update all sort orders
+    await prisma.$transaction(
+      reordered.map((o, index) =>
+        prisma.order.update({
+          where: { id: o.id },
+          data: { sortOrder: index }
+        })
+      )
+    );
+
+    res.json({ reordered: true });
+  } catch (error) {
+    next(error);
+  }
+});

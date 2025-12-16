@@ -1,0 +1,424 @@
+// Etsy CRM Database Schema
+// Based on ETSY_CRM_FOLLOWUP.md Part 5 specification
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE ENTITIES
+// ============================================
+
+model Shop {
+  id                String   @id @default(cuid())
+  etsyShopId        String   @unique @map("etsy_shop_id")
+  shopName          String   @map("shop_name")
+  shopUrl           String?  @map("shop_url")
+  iconUrl           String?  @map("icon_url")
+
+  // Etsy OAuth tokens
+  etsyAccessToken   String?  @map("etsy_access_token")
+  etsyRefreshToken  String?  @map("etsy_refresh_token")
+  etsyTokenExpiry   DateTime? @map("etsy_token_expiry")
+  etsyUserId        String?  @map("etsy_user_id")
+
+  // Shop settings
+  defaultFromAddress Json?   @map("default_from_address")
+  autoSyncEnabled   Boolean  @default(true) @map("auto_sync_enabled")
+  syncIntervalMins  Int      @default(15) @map("sync_interval_mins")
+  lastSyncAt        DateTime? @map("last_sync_at")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  users             User[]
+  orders            Order[]
+  customers         Customer[]
+  syncLogs          SyncLog[]
+  savedFilters      SavedFilter[]
+  messageTemplates  MessageTemplate[]
+
+  @@map("shops")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  shopId        String   @map("shop_id")
+  email         String   @unique
+  passwordHash  String   @map("password_hash")
+  name          String
+  role          UserRole @default(MEMBER)
+  avatarUrl     String?  @map("avatar_url")
+  isActive      Boolean  @default(true) @map("is_active")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+
+  // Relations
+  shop          Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  assignedOrders Order[] @relation("AssignedOrders")
+  orderNotes    OrderNote[]
+  orderHistory  OrderHistory[]
+
+  @@index([shopId])
+  @@map("users")
+}
+
+enum UserRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+// ============================================
+// CUSTOMER MANAGEMENT
+// ============================================
+
+model Customer {
+  id               String   @id @default(cuid())
+  shopId           String   @map("shop_id")
+  etsyBuyerId      String?  @unique @map("etsy_buyer_id")
+
+  name             String
+  email            String
+  phone            String?
+
+  // Computed/cached fields (updated on order sync)
+  orderCount       Int      @default(0) @map("order_count")
+  totalSpent       Decimal  @default(0) @db.Decimal(10, 2) @map("total_spent")
+  averageOrderValue Decimal @default(0) @db.Decimal(10, 2) @map("average_order_value")
+  isRepeatCustomer Boolean  @default(false) @map("is_repeat_customer")
+  tier             CustomerTier @default(BRONZE)
+
+  // Customer insights
+  rating           Decimal?  @db.Decimal(2, 1)
+  reviewCount      Int       @default(0) @map("review_count")
+  notes            String?
+
+  firstOrderAt     DateTime? @map("first_order_at")
+  lastOrderAt      DateTime? @map("last_order_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  orders           Order[]
+  flags            CustomerFlag[]
+
+  @@unique([shopId, email])
+  @@index([shopId])
+  @@index([etsyBuyerId])
+  @@map("customers")
+}
+
+enum CustomerTier {
+  BRONZE
+  SILVER
+  GOLD
+  VIP
+}
+
+model CustomerFlag {
+  id          String          @id @default(cuid())
+  customerId  String          @map("customer_id")
+  type        CustomerFlagType
+  reason      String
+  createdAt   DateTime        @default(now()) @map("created_at")
+  resolvedAt  DateTime?       @map("resolved_at")
+
+  // Relations
+  customer    Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@map("customer_flags")
+}
+
+enum CustomerFlagType {
+  DIFFICULT
+  VIP
+  FRAUD_RISK
+  SPECIAL_INSTRUCTIONS
+  DELIVERY_ISSUE
+  QUALITY_ISSUE
+}
+
+// ============================================
+// ORDER MANAGEMENT
+// ============================================
+
+model Order {
+  id                String        @id @default(cuid())
+  shopId            String        @map("shop_id")
+  customerId        String        @map("customer_id")
+  assignedToId      String?       @map("assigned_to_id")
+
+  // Etsy identifiers
+  etsyReceiptId     String        @unique @map("etsy_receipt_id")
+  orderNumber       String        @map("order_number")
+
+  // Order details
+  pipelineStage     PipelineStage @default(NEW) @map("pipeline_stage")
+  totalAmount       Decimal       @db.Decimal(10, 2) @map("total_amount")
+  subtotal          Decimal       @db.Decimal(10, 2)
+  shippingCost      Decimal       @db.Decimal(10, 2) @map("shipping_cost")
+  taxAmount         Decimal       @db.Decimal(10, 2) @map("tax_amount")
+  discountAmount    Decimal       @default(0) @db.Decimal(10, 2) @map("discount_amount")
+  currency          String        @default("USD")
+
+  // Shipping info
+  shippingAddress   Json          @map("shipping_address")
+  shipByDate        DateTime      @map("ship_by_date")
+  estimatedDelivery DateTime?     @map("estimated_delivery")
+  carrierName       String?       @map("carrier_name")
+  trackingNumber    String?       @map("tracking_number")
+  trackingUrl       String?       @map("tracking_url")
+  isShipped         Boolean       @default(false) @map("is_shipped")
+  shippedAt         DateTime?     @map("shipped_at")
+  deliveredAt       DateTime?     @map("delivered_at")
+
+  // Flags
+  isGift            Boolean       @default(false) @map("is_gift")
+  giftMessage       String?       @map("gift_message")
+  buyerNote         String?       @map("buyer_note")
+  hasIssue          Boolean       @default(false) @map("has_issue")
+  issueDescription  String?       @map("issue_description")
+
+  // Tags (stored as JSON array)
+  tags              String[]      @default([])
+
+  // Sort order within pipeline stage
+  sortOrder         Int           @default(0) @map("sort_order")
+
+  // Timestamps
+  orderedAt         DateTime      @map("ordered_at")
+  paidAt            DateTime?     @map("paid_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  shop              Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  assignedTo        User?         @relation("AssignedOrders", fields: [assignedToId], references: [id])
+  items             OrderItem[]
+  notes             OrderNote[]
+  history           OrderHistory[]
+  shippingLabel     ShippingLabel?
+
+  @@index([shopId])
+  @@index([customerId])
+  @@index([pipelineStage])
+  @@index([orderedAt])
+  @@index([shipByDate])
+  @@map("orders")
+}
+
+enum PipelineStage {
+  NEW
+  PROCESSING
+  READY_TO_SHIP
+  SHIPPED
+  DELIVERED
+  NEEDS_ATTENTION
+}
+
+model OrderItem {
+  id                String   @id @default(cuid())
+  orderId           String   @map("order_id")
+  etsyTransactionId String?  @map("etsy_transaction_id")
+  etsyListingId     String?  @map("etsy_listing_id")
+
+  title             String
+  quantity          Int
+  price             Decimal  @db.Decimal(10, 2)
+  sku               String?
+  imageUrl          String?  @map("image_url")
+
+  // Personalization/variations
+  personalization   String?
+  variations        Json?
+
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderNote {
+  id        String   @id @default(cuid())
+  orderId   String   @map("order_id")
+  userId    String?  @map("user_id")
+  content   String
+  isInternal Boolean @default(true) @map("is_internal")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([orderId])
+  @@map("order_notes")
+}
+
+model OrderHistory {
+  id          String          @id @default(cuid())
+  orderId     String          @map("order_id")
+  userId      String?         @map("user_id")
+  type        OrderHistoryType
+  description String
+  metadata    Json?
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  // Relations
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user        User?           @relation(fields: [userId], references: [id])
+
+  @@index([orderId])
+  @@map("order_history")
+}
+
+enum OrderHistoryType {
+  CREATED
+  STAGE_CHANGED
+  NOTE_ADDED
+  TAG_ADDED
+  TAG_REMOVED
+  SHIPPED
+  DELIVERED
+  ISSUE_FLAGGED
+  ISSUE_RESOLVED
+  ASSIGNED
+  UNASSIGNED
+}
+
+// ============================================
+// SHIPPING
+// ============================================
+
+model ShippingLabel {
+  id              String   @id @default(cuid())
+  orderId         String   @unique @map("order_id")
+
+  carrier         String
+  serviceType     String   @map("service_type")
+  trackingNumber  String   @map("tracking_number")
+  labelUrl        String?  @map("label_url")
+
+  // Package details
+  packageType     String   @map("package_type")
+  weightOz        Decimal  @db.Decimal(6, 2) @map("weight_oz")
+  lengthIn        Decimal? @db.Decimal(5, 2) @map("length_in")
+  widthIn         Decimal? @db.Decimal(5, 2) @map("width_in")
+  heightIn        Decimal? @db.Decimal(5, 2) @map("height_in")
+
+  // Cost
+  shippingCost    Decimal  @db.Decimal(10, 2) @map("shipping_cost")
+  insuranceAmount Decimal? @db.Decimal(10, 2) @map("insurance_amount")
+
+  // Options
+  signatureRequired Boolean @default(false) @map("signature_required")
+
+  purchasedAt     DateTime @default(now()) @map("purchased_at")
+  voidedAt        DateTime? @map("voided_at")
+
+  // Relations
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("shipping_labels")
+}
+
+// ============================================
+// SETTINGS & CONFIGURATION
+// ============================================
+
+model SavedFilter {
+  id        String   @id @default(cuid())
+  shopId    String   @map("shop_id")
+  name      String
+  type      FilterType
+  filters   Json
+  isDefault Boolean  @default(false) @map("is_default")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@map("saved_filters")
+}
+
+enum FilterType {
+  ORDER
+  CUSTOMER
+}
+
+model MessageTemplate {
+  id          String   @id @default(cuid())
+  shopId      String   @map("shop_id")
+  name        String
+  subject     String?
+  body        String
+  category    String?
+  variables   String[] @default([])
+  usageCount  Int      @default(0) @map("usage_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  shop        Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@map("message_templates")
+}
+
+// ============================================
+// SYNC & LOGGING
+// ============================================
+
+model SyncLog {
+  id            String     @id @default(cuid())
+  shopId        String     @map("shop_id")
+  type          SyncType
+  status        SyncStatus
+
+  ordersCreated Int        @default(0) @map("orders_created")
+  ordersUpdated Int        @default(0) @map("orders_updated")
+  customersCreated Int     @default(0) @map("customers_created")
+  customersUpdated Int     @default(0) @map("customers_updated")
+
+  errorMessage  String?    @map("error_message")
+  errorDetails  Json?      @map("error_details")
+
+  startedAt     DateTime   @default(now()) @map("started_at")
+  completedAt   DateTime?  @map("completed_at")
+
+  // Relations
+  shop          Shop       @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  @@index([shopId])
+  @@index([startedAt])
+  @@map("sync_logs")
+}
+
+enum SyncType {
+  MANUAL
+  SCHEDULED
+  WEBHOOK
+}
+
+enum SyncStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}

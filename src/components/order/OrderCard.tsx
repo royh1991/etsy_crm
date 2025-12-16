@@ -1,6 +1,6 @@
-import { format, differenceInDays } from 'date-fns';
+import { format } from 'date-fns';
 import type { Order, Customer } from '../../types';
-import { isOrderOverdue, getDaysUntilShipBy, getTierLabel } from '../../types';
+import { isOrderOverdue, getDaysUntilShipBy } from '../../types';
 
 // Icons
 const GiftIcon = () => (
@@ -34,17 +34,16 @@ const MessageIcon = () => (
   </svg>
 );
 
-const MenuIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-    <circle cx="10" cy="4" r="1.5" fill="currentColor"/>
-    <circle cx="10" cy="10" r="1.5" fill="currentColor"/>
-    <circle cx="10" cy="16" r="1.5" fill="currentColor"/>
-  </svg>
-);
 
 const FlagIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
     <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7"/>
+  </svg>
+);
+
+const CheckIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
@@ -55,6 +54,9 @@ interface OrderCardProps {
   onCreateLabel: () => void;
   onMessageCustomer?: () => void;
   isDragging?: boolean;
+  isSelected?: boolean;
+  onSelect?: (orderId: string, selected: boolean) => void;
+  showCheckbox?: boolean;
 }
 
 export default function OrderCard({
@@ -62,13 +64,16 @@ export default function OrderCard({
   customer,
   onViewDetails,
   onCreateLabel,
-  isDragging = false
+  isDragging = false,
+  isSelected = false,
+  onSelect,
+  showCheckbox = false
 }: OrderCardProps) {
   const isOverdue = isOrderOverdue(order);
   const daysUntilShipBy = getDaysUntilShipBy(order);
   const isRepeat = customer?.isRepeatCustomer || false;
   const isFlagged = customer?.isFlagged || false;
-  const isVIP = customer?.tier === 'vip' || customer?.tier === 'gold';
+  
 
   // Format ship-by date display
   const getShipByDisplay = () => {
@@ -103,18 +108,40 @@ export default function OrderCard({
   const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
   const additionalItems = itemCount - (order.items[0]?.quantity || 0);
 
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSelect) {
+      onSelect(order.id, !isSelected);
+    }
+  };
+
   return (
     <div
       className={`
         bg-white rounded-lg shadow-sm border border-gray-200
         hover:shadow-md hover:border-[#6e6af0] transition-all duration-200
-        cursor-pointer group
+        cursor-pointer group relative
         ${isDragging ? 'rotate-2 shadow-lg' : ''}
         ${isOverdue ? 'border-red-300 bg-red-50/30' : ''}
         ${isFlagged ? 'border-orange-300' : ''}
+        ${isSelected ? 'ring-2 ring-[#6e6af0] border-[#6e6af0]' : ''}
       `}
       onClick={onViewDetails}
     >
+      {/* Selection Checkbox */}
+      {showCheckbox && (
+        <div
+          className={`absolute -left-2 -top-2 w-6 h-6 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all z-10 ${
+            isSelected
+              ? 'bg-[#6e6af0] border-[#6e6af0] text-white'
+              : 'bg-white border-gray-300 hover:border-[#6e6af0] opacity-0 group-hover:opacity-100'
+          }`}
+          onClick={handleCheckboxClick}
+        >
+          {isSelected && <CheckIcon />}
+        </div>
+      )}
+
       {/* Header */}
       <div className="p-3 pb-2">
         <div className="flex items-start gap-3">
@@ -131,17 +158,9 @@ export default function OrderCard({
 
           {/* Order Info */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-gray-500 font-medium">
-                #{order.orderNumber.slice(-6)}
-              </span>
-              <button
-                className="p-1 hover:bg-gray-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
-                onClick={(e) => { e.stopPropagation(); }}
-              >
-                <MenuIcon />
-              </button>
-            </div>
+            <span className="text-[11px] text-gray-500 font-medium">
+              #{order.orderNumber.slice(-6)}
+            </span>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className="text-[13px] font-medium text-gray-900 truncate">
                 {order.buyerName}

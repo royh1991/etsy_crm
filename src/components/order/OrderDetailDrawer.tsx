@@ -101,11 +101,6 @@ export default function OrderDetailDrawer({
     }
   };
 
-  const getStageLabel = (stage: PipelineStage) => {
-    const stageConfig = DEFAULT_PIPELINE_STAGES.find(s => s.id === stage);
-    return stageConfig ? `${stageConfig.emoji} ${stageConfig.name}` : stage;
-  };
-
   if (!isOpen) return null;
 
   return (

@@ -75,32 +75,6 @@ const CustomersIcon = ({ active = false }: { active?: boolean }) => (
   </svg>
 );
 
-const AnalyticsIcon = ({ active = false }: { active?: boolean }) => (
-  <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-    <line
-      x1="18" y1="20" x2="18" y2="10"
-      stroke={active ? "#6E6AF0" : "#959BA3"}
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <line
-      x1="12" y1="20" x2="12" y2="4"
-      stroke={active ? "#6E6AF0" : "#959BA3"}
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-    <line
-      x1="6" y1="20" x2="6" y2="14"
-      stroke={active ? "#6E6AF0" : "#959BA3"}
-      strokeWidth="1.5"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    />
-  </svg>
-);
-
 const SettingsIcon = ({ active = false }: { active?: boolean }) => (
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
     <circle
@@ -246,10 +220,14 @@ export default function IconSidebar({ collapsed, onToggle, isMobile }: IconSideb
           {/* Settings at bottom */}
           <div className="flex flex-col items-center">
             <button
-              className="w-[49px] py-[10px] flex justify-center rounded-[8px] hover:bg-[#f7f7f7] transition-colors"
+              onClick={() => setActiveView('settings')}
+              className={`
+                w-[49px] py-[10px] flex justify-center rounded-[8px] transition-colors
+                ${activeView === 'settings' ? 'bg-[#eef1ff]' : 'hover:bg-[#f7f7f7]'}
+              `}
               title="Settings"
             >
-              <SettingsIcon />
+              <SettingsIcon active={activeView === 'settings'} />
             </button>
           </div>
         </div>

@@ -21,9 +21,25 @@ import { CSS } from '@dnd-kit/utilities';
 import OrderCard from '../order/OrderCard';
 import OrderDetailDrawer from '../order/OrderDetailDrawer';
 import ShippingModal from '../shipping/ShippingModal';
+import BatchActionsBar from '../order/BatchActionsBar';
+import MobilePipeline from './MobilePipeline';
 import type { Order, PipelineStage, PipelineStageConfig } from '../../types';
 import { DEFAULT_PIPELINE_STAGES } from '../../types';
 import { useOrderStore } from '../../stores/orderStore';
+
+// Hook to detect mobile
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  return isMobile;
+}
 
 const PlusIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -31,13 +47,6 @@ const PlusIcon = () => (
   </svg>
 );
 
-const MenuIcon = () => (
-  <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
-    <circle cx="10" cy="4" r="1.5" fill="#404656"/>
-    <circle cx="10" cy="10" r="1.5" fill="#404656"/>
-    <circle cx="10" cy="16" r="1.5" fill="#404656"/>
-  </svg>
-);
 
 const DragHandleIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-40">
@@ -54,11 +63,17 @@ const DragHandleIcon = () => (
 function SortableOrderCard({
   order,
   onViewDetails,
-  onCreateLabel
+  onCreateLabel,
+  isSelected,
+  onSelect,
+  showCheckbox
 }: {
   order: Order;
   onViewDetails: () => void;
   onCreateLabel: () => void;
+  isSelected?: boolean;
+  onSelect?: (orderId: string, selected: boolean) => void;
+  showCheckbox?: boolean;
 }) {
   const { customers } = useOrderStore();
   const customer = customers.find(c => c.id === order.customerId);
@@ -86,6 +101,9 @@ function SortableOrderCard({
         onViewDetails={onViewDetails}
         onCreateLabel={onCreateLabel}
         isDragging={isDragging}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        showCheckbox={showCheckbox}
       />
     </div>
   );
@@ -164,13 +182,19 @@ function PipelineColumn({
   orders,
   onTitleChange,
   onViewDetails,
-  onCreateLabel
+  onCreateLabel,
+  selectedOrderIds,
+  onToggleSelection,
+  showCheckboxes
 }: {
   stage: PipelineStageConfig;
   orders: Order[];
   onTitleChange: (newTitle: string) => void;
   onViewDetails: (orderId: string) => void;
   onCreateLabel: (orderId: string) => void;
+  selectedOrderIds: string[];
+  onToggleSelection: (orderId: string) => void;
+  showCheckboxes: boolean;
 }) {
   const {
     attributes,
@@ -223,9 +247,6 @@ function PipelineColumn({
             </span>
           </div>
         </div>
-        <button className="p-[4px] hover:bg-white rounded transition-colors">
-          <MenuIcon />
-        </button>
       </div>
 
       {/* Orders Container */}
@@ -240,6 +261,9 @@ function PipelineColumn({
               order={order}
               onViewDetails={() => onViewDetails(order.id)}
               onCreateLabel={() => onCreateLabel(order.id)}
+              isSelected={selectedOrderIds.includes(order.id)}
+              onSelect={() => onToggleSelection(order.id)}
+              showCheckbox={showCheckboxes}
             />
           ))}
         </div>
@@ -265,11 +289,17 @@ export default function KanbanBoard() {
     isOrderDrawerOpen,
     isShippingModalOpen,
     selectedOrderId,
+    selectedOrderIds,
     moveOrder,
+    reorderOrders,
     openOrderDrawer,
     closeOrderDrawer,
     openShippingModal,
-    closeShippingModal
+    closeShippingModal,
+    toggleOrderSelection,
+    clearOrderSelection,
+    batchMoveOrders,
+    batchAddTag
   } = useOrderStore();
 
   const [columns, setColumns] = useState<PipelineStageConfig[]>(DEFAULT_PIPELINE_STAGES);
@@ -289,11 +319,6 @@ export default function KanbanBoard() {
 
   const getOrdersByStage = (stageId: PipelineStage): Order[] => {
     return orders.filter(o => o.pipelineStage === stageId);
-  };
-
-  const findColumnByOrderId = (orderId: string) => {
-    const order = orders.find(o => o.id === orderId);
-    return order ? columns.find(col => col.id === order.pipelineStage) : undefined;
   };
 
   const findOrderById = (orderId: string) => {
@@ -349,13 +374,46 @@ export default function KanbanBoard() {
     const activeIdStr = active.id as string;
     const overIdStr = over.id as string;
 
-    if (activeType === 'column') {
-      // Reorder columns
-      const oldIndex = columns.findIndex(col => col.id === activeIdStr);
-      const newIndex = columns.findIndex(col => col.id === overIdStr);
+    if (activeIdStr === overIdStr) {
+      setActiveId(null);
+      setActiveType(null);
+      return;
+    }
 
-      if (oldIndex !== newIndex) {
+    if (activeType === 'column') {
+      // Check if over is a column directly
+      let overColumnId = overIdStr;
+
+      // If over is not a column, it might be an order - find which column it belongs to
+      const isOverAColumn = columns.some(col => col.id === overIdStr);
+      if (!isOverAColumn) {
+        const overOrder = findOrderById(overIdStr);
+        if (overOrder) {
+          overColumnId = overOrder.pipelineStage;
+        }
+      }
+
+      const oldIndex = columns.findIndex(col => col.id === activeIdStr);
+      const newIndex = columns.findIndex(col => col.id === overColumnId);
+
+      if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
         setColumns(cols => arrayMove(cols, oldIndex, newIndex));
+      }
+    } else if (activeType === 'order') {
+      // Handle order reordering within the same column
+      const activeOrder = findOrderById(activeIdStr);
+      const overOrder = findOrderById(overIdStr);
+
+      if (activeOrder && overOrder && activeOrder.pipelineStage === overOrder.pipelineStage) {
+        // Reorder orders within the same column
+        const stageOrders = getOrdersByStage(activeOrder.pipelineStage);
+        const oldIndex = stageOrders.findIndex(o => o.id === activeIdStr);
+        const newIndex = stageOrders.findIndex(o => o.id === overIdStr);
+
+        if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+          // Reorder in the store
+          reorderOrders(activeOrder.pipelineStage, oldIndex, newIndex);
+        }
       }
     }
 
@@ -383,6 +441,44 @@ export default function KanbanBoard() {
   const selectedOrder = selectedOrderId ? orders.find(o => o.id === selectedOrderId) : null;
   const selectedCustomer = selectedOrder ? customers.find(c => c.id === selectedOrder.customerId) : undefined;
 
+  const isMobile = useIsMobile();
+
+  // Mobile view
+  if (isMobile) {
+    return (
+      <div className="flex-1 bg-[#f7f7f7] overflow-hidden flex flex-col min-h-0">
+        <MobilePipeline
+          onViewDetails={handleViewDetails}
+          onCreateLabel={handleCreateLabel}
+        />
+
+        {/* Order Detail Drawer */}
+        {selectedOrder && (
+          <OrderDetailDrawer
+            order={selectedOrder}
+            customer={selectedCustomer}
+            isOpen={isOrderDrawerOpen}
+            onClose={closeOrderDrawer}
+            onCreateLabel={() => {
+              closeOrderDrawer();
+              openShippingModal(selectedOrder.id);
+            }}
+          />
+        )}
+
+        {/* Shipping Modal */}
+        {selectedOrder && (
+          <ShippingModal
+            order={selectedOrder}
+            isOpen={isShippingModalOpen}
+            onClose={closeShippingModal}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // Desktop view
   return (
     <div className="flex-1 bg-[#f7f7f7] overflow-hidden flex flex-col min-h-0">
       <DndContext
@@ -406,6 +502,9 @@ export default function KanbanBoard() {
                   onTitleChange={(newTitle) => handleTitleChange(column.id, newTitle)}
                   onViewDetails={handleViewDetails}
                   onCreateLabel={handleCreateLabel}
+                  selectedOrderIds={selectedOrderIds}
+                  onToggleSelection={toggleOrderSelection}
+                  showCheckboxes={selectedOrderIds.length > 0}
                 />
               ))}
             </div>
@@ -457,6 +556,22 @@ export default function KanbanBoard() {
           onClose={closeShippingModal}
         />
       )}
+
+      {/* Batch Actions Bar */}
+      <BatchActionsBar
+        selectedCount={selectedOrderIds.length}
+        onClearSelection={clearOrderSelection}
+        onMoveToStage={batchMoveOrders}
+        onAddTag={batchAddTag}
+        onBulkPrint={() => {
+          // TODO: Implement bulk print
+          console.log('Printing packing slips for:', selectedOrderIds);
+        }}
+        onBulkCreateLabels={() => {
+          // TODO: Implement bulk label creation
+          console.log('Creating labels for:', selectedOrderIds);
+        }}
+      />
     </div>
   );
 }

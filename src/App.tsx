@@ -1,32 +1,37 @@
 import { useState, useEffect } from 'react';
 import IconSidebar from './components/sidebar/IconSidebar';
-import ProjectSidebar from './components/sidebar/ProjectSidebar';
 import Header from './components/header/Header';
-import ProjectHeader from './components/header/ProjectHeader';
 import KanbanBoard from './components/kanban/KanbanBoard';
 import CustomerList from './components/customer/CustomerList';
+import CustomerDetailDrawer from './components/customer/CustomerDetailDrawer';
 import Dashboard from './components/analytics/Dashboard';
+import Settings from './components/settings/Settings';
+import CommandPalette from './components/common/CommandPalette';
+import KeyboardShortcutsModal from './components/common/KeyboardShortcutsModal';
 import { useOrderStore } from './stores/orderStore';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 
 function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
-  const { activeView, openCustomerDrawer } = useOrderStore();
+  const {
+    activeView,
+    openCustomerDrawer,
+    closeCustomerDrawer,
+    isCustomerDrawerOpen,
+    selectedCustomerId,
+    customers
+  } = useOrderStore();
+
+  // Initialize keyboard shortcuts
+  useKeyboardShortcuts();
 
   // Handle responsive breakpoints
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth;
       setIsMobile(width < 768);
-
-      // Auto-collapse sidebars on smaller screens
-      if (width < 1024) {
-        setProjectSidebarCollapsed(true);
-      } else {
-        setProjectSidebarCollapsed(false);
-      }
 
       if (width < 768) {
         setSidebarCollapsed(true);
@@ -48,6 +53,8 @@ function App() {
         return 'Customers';
       case 'analytics':
         return 'Dashboard';
+      case 'settings':
+        return 'Settings';
       default:
         return 'Etsy CRM';
     }
@@ -56,12 +63,7 @@ function App() {
   const renderMainContent = () => {
     switch (activeView) {
       case 'pipeline':
-        return (
-          <>
-            <ProjectHeader />
-            <KanbanBoard />
-          </>
-        );
+        return <KanbanBoard />;
       case 'customers':
         return (
           <div className="flex-1 p-4 md:p-6 overflow-hidden">
@@ -70,10 +72,17 @@ function App() {
         );
       case 'analytics':
         return <Dashboard />;
+      case 'settings':
+        return <Settings />;
       default:
         return <KanbanBoard />;
     }
   };
+
+  // Get selected customer for drawer
+  const selectedCustomer = selectedCustomerId
+    ? customers.find(c => c.id === selectedCustomerId)
+    : null;
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#f7f7f7]">
@@ -84,31 +93,30 @@ function App() {
         isMobile={isMobile}
       />
 
-      {/* Left Project Sidebar - only show for pipeline and analytics views */}
-      {(activeView === 'pipeline' || activeView === 'analytics') && (
-        <ProjectSidebar
-          collapsed={projectSidebarCollapsed}
-          onToggle={() => setProjectSidebarCollapsed(!projectSidebarCollapsed)}
-        />
-      )}
-
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header */}
         <Header
-          onMenuClick={() => {
-            if (isMobile) {
-              setSidebarCollapsed(!sidebarCollapsed);
-            } else {
-              setProjectSidebarCollapsed(!projectSidebarCollapsed);
-            }
-          }}
+          onMenuClick={() => setSidebarCollapsed(!sidebarCollapsed)}
           title={getViewTitle()}
         />
 
         {/* Main Content */}
         {renderMainContent()}
       </div>
+
+      {/* Customer Detail Drawer */}
+      {selectedCustomer && (
+        <CustomerDetailDrawer
+          customer={selectedCustomer}
+          isOpen={isCustomerDrawerOpen}
+          onClose={closeCustomerDrawer}
+        />
+      )}
+
+      {/* Global Modals */}
+      <CommandPalette />
+      <KeyboardShortcutsModal />
     </div>
   );
 }
