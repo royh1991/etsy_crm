@@ -24,6 +24,7 @@ interface OrderStore {
 
   // Order actions
   setOrders: (orders: Order[]) => void;
+  addOrder: (order: Order) => void;
   moveOrder: (orderId: string, newStage: PipelineStage) => void;
   reorderOrders: (stageId: PipelineStage, sourceIndex: number, destIndex: number) => void;
   selectOrder: (orderId: string | null) => void;
@@ -86,6 +87,10 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
 
   // Order actions
   setOrders: (orders) => set({ orders }),
+
+  addOrder: (order) => set((state) => ({
+    orders: [order, ...state.orders],
+  })),
 
   moveOrder: (orderId, newStage) => set((state) => ({
     orders: state.orders.map((order) => {

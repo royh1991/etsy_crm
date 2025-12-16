@@ -22,11 +22,10 @@ const AlertIcon = () => (
 
 const ShipIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-    <path d="M5 18H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3"/>
-    <path d="M15 13h6l2 2v4a1 1 0 0 1-1 1h-1"/>
-    <path d="M15 19a2 2 0 1 0 4 0 2 2 0 0 0-4 0"/>
-    <path d="M5 19a2 2 0 1 0 4 0 2 2 0 0 0-4 0"/>
-    <path d="M15 13V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v8"/>
+    <rect x="1" y="3" width="15" height="13" rx="2"/>
+    <path d="M16 8h4l3 3v5h-7V8z"/>
+    <circle cx="5.5" cy="18.5" r="2.5"/>
+    <circle cx="18.5" cy="18.5" r="2.5"/>
   </svg>
 );
 
@@ -48,6 +47,13 @@ const TruckIcon = () => (
     <path d="M16 8h4l3 3v5h-7V8z"/>
     <circle cx="5.5" cy="18.5" r="2.5"/>
     <circle cx="18.5" cy="18.5" r="2.5"/>
+  </svg>
+);
+
+const PackageIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+    <path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/>
   </svg>
 );
 
@@ -112,12 +118,15 @@ export default function OrderCard({
     const firstItem = order.items[0];
     if (!firstItem) return '';
     let text = firstItem.title;
-    if (text.length > 35) text = text.slice(0, 35) + '...';
-    if (firstItem.quantity > 1) text += ` ×${firstItem.quantity}`;
+    if (text.length > 32) text = text.slice(0, 32) + '...';
     return text;
   })();
 
-  const additionalItems = order.items.length > 1 ? order.items.length - 1 : 0;
+  const totalItems = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  const additionalItems = totalItems > 1 ? totalItems - 1 : 0;
+
+  // Get product image
+  const productImage = order.items[0]?.imageUrl;
 
   const handleCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -137,13 +146,13 @@ export default function OrderCard({
         bg-white rounded-lg border transition-all duration-150
         cursor-pointer group relative
         ${isDragging ? 'rotate-1 shadow-xl scale-105' : 'hover:shadow-md'}
-        ${isOverdue && !order.isShipped ? 'border-red-300 border-l-4 border-l-red-500' : 'border-gray-200'}
+        ${isOverdue && !order.isShipped ? 'border-l-4 border-l-red-500 border-red-200' : 'border-gray-200'}
         ${order.hasIssue ? 'border-l-4 border-l-orange-500' : ''}
         ${isSelected ? 'ring-2 ring-[#6e6af0] border-[#6e6af0]' : ''}
       `}
       onClick={onViewDetails}
     >
-      {/* Selection Checkbox - Only visible on hover or when selected */}
+      {/* Selection Checkbox */}
       {showCheckbox && (
         <div
           className={`absolute -left-2 -top-2 w-5 h-5 rounded-full border-2 flex items-center justify-center cursor-pointer transition-all z-10 ${
@@ -157,103 +166,127 @@ export default function OrderCard({
         </div>
       )}
 
-      <div className="p-3">
-        {/* Top Row: Tier + Name + Price */}
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-            {tierBadge && (
-              <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${tierBadge.className}`}>
-                {tierBadge.text}
-              </span>
-            )}
-            <span className="text-[13px] font-medium text-gray-900 truncate">
-              {order.buyerName}
-            </span>
-            {isRepeat && (
-              <span className="text-[#6e6af0] flex-shrink-0" title={`${customer?.orderCount} orders`}>
-                <RepeatIcon />
-              </span>
-            )}
-            {isFlagged && (
-              <span className="text-orange-500 flex-shrink-0" title="Flagged">
-                <FlagIcon />
-              </span>
-            )}
-            {order.isGift && (
-              <span className="text-pink-500 flex-shrink-0" title="Gift">
-                <GiftIcon />
-              </span>
-            )}
-          </div>
-          <span className="text-[13px] font-bold text-gray-900 flex-shrink-0">
-            ${order.totalAmount.toFixed(2)}
-          </span>
-        </div>
-
-        {/* Product Title */}
-        <div className="text-[11px] text-gray-600 mt-1 truncate">
-          {productDisplay}
-          {additionalItems > 0 && (
-            <span className="text-gray-400"> +{additionalItems} more</span>
-          )}
-        </div>
-
-        {/* Bottom Row: Urgency + Actions */}
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-2">
-            {urgencyDisplay && (
-              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${urgencyDisplay.className}`}>
-                {urgencyDisplay.urgent && '⚠ '}{urgencyDisplay.text}
-              </span>
-            )}
-            {order.hasIssue && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 flex items-center gap-0.5">
-                <AlertIcon /> Issue
-              </span>
-            )}
-          </div>
-
-          {/* Ship Button - Always visible for unshipped orders */}
-          {!order.isShipped && (
-            <button
-              className="flex items-center gap-1 text-[10px] font-medium text-white bg-[#6e6af0] hover:bg-[#5b57d1] rounded px-2 py-1 transition-colors"
-              onClick={handleShipClick}
-            >
-              <ShipIcon />
-              Ship
-            </button>
-          )}
-
-          {/* Shipped Status */}
-          {order.isShipped && order.trackingNumber && (
-            <div className="text-[10px] text-gray-500 flex items-center gap-1">
-              <TruckIcon />
-              <span className="truncate max-w-[100px]">
-                {order.carrierName}: {order.trackingNumber.slice(0, 10)}...
-              </span>
+      <div className="p-3 flex gap-3">
+        {/* Product Thumbnail */}
+        <div className="flex-shrink-0">
+          <div className="w-[44px] h-[44px] rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+            {productImage ? (
+              <img
+                src={productImage}
+                alt=""
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  // Hide broken images and show fallback
+                  (e.target as HTMLImageElement).style.display = 'none';
+                  (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden');
+                }}
+              />
+            ) : null}
+            <div className={`text-gray-400 ${productImage ? 'hidden' : ''}`}>
+              <PackageIcon />
             </div>
-          )}
-        </div>
-
-        {/* Order Number - Only visible on hover */}
-        <div className="absolute top-1 right-1 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity bg-white/80 px-1 rounded">
-          #{order.orderNumber.slice(-6)}
-        </div>
-
-        {/* Tags tooltip on hover */}
-        {order.tags.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-1 hidden group-hover:flex flex-wrap gap-1 bg-white shadow-lg rounded p-1.5 border border-gray-200 z-20 max-w-[200px]">
-            {order.tags.map((tag) => (
-              <span
-                key={tag}
-                className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap"
-              >
-                {tag}
-              </span>
-            ))}
           </div>
-        )}
+        </div>
+
+        {/* Order Info */}
+        <div className="flex-1 min-w-0">
+          {/* Row 1: Tier + Name + Icons + Price */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+              {tierBadge && (
+                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold flex-shrink-0 ${tierBadge.className}`}>
+                  {tierBadge.text}
+                </span>
+              )}
+              <span className="text-[13px] font-medium text-gray-900 truncate">
+                {order.buyerName}
+              </span>
+              {isRepeat && (
+                <span className="text-[#6e6af0] flex-shrink-0" title={`${customer?.orderCount} orders`}>
+                  <RepeatIcon />
+                </span>
+              )}
+              {isFlagged && (
+                <span className="text-orange-500 flex-shrink-0" title="Flagged">
+                  <FlagIcon />
+                </span>
+              )}
+              {order.isGift && (
+                <span className="text-pink-500 flex-shrink-0" title="Gift">
+                  <GiftIcon />
+                </span>
+              )}
+            </div>
+            <span className="text-[13px] font-bold text-gray-900 flex-shrink-0">
+              ${order.totalAmount.toFixed(2)}
+            </span>
+          </div>
+
+          {/* Row 2: Product Title */}
+          <div className="text-[11px] text-gray-600 mt-0.5 truncate">
+            {productDisplay}
+            {additionalItems > 0 && (
+              <span className="text-gray-400"> +{additionalItems} more</span>
+            )}
+          </div>
+
+          {/* Row 3: Urgency + Actions */}
+          <div className="flex items-center justify-between mt-1.5">
+            <div className="flex items-center gap-2">
+              {urgencyDisplay && (
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${urgencyDisplay.className}`}>
+                  {urgencyDisplay.urgent && '⚠ '}{urgencyDisplay.text}
+                </span>
+              )}
+              {order.hasIssue && (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 flex items-center gap-0.5">
+                  <AlertIcon /> Issue
+                </span>
+              )}
+            </div>
+
+            {/* Ship Button */}
+            {!order.isShipped && (
+              <button
+                className="flex items-center gap-1 text-[10px] font-medium text-white bg-[#6e6af0] hover:bg-[#5b57d1] rounded px-2 py-1 transition-colors"
+                onClick={handleShipClick}
+              >
+                <ShipIcon />
+                Ship
+              </button>
+            )}
+
+            {/* Shipped Status */}
+            {order.isShipped && order.trackingNumber && (
+              <div className="text-[10px] text-gray-500 flex items-center gap-1">
+                <TruckIcon />
+                <span className="truncate max-w-[80px]">
+                  {order.trackingNumber.slice(0, 10)}...
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
+
+      {/* Order Number - Hover only */}
+      <div className="absolute top-1 right-1 text-[9px] text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 px-1 rounded">
+        #{order.orderNumber.slice(-6)}
+      </div>
+
+      {/* Tags tooltip on hover */}
+      {order.tags.length > 0 && (
+        <div className="absolute bottom-full left-0 mb-1 hidden group-hover:flex flex-wrap gap-1 bg-white shadow-lg rounded p-1.5 border border-gray-200 z-20 max-w-[200px]">
+          {order.tags.map((tag) => (
+            <span
+              key={tag}
+              className="text-[9px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 whitespace-nowrap"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

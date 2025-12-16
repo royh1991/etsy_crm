@@ -23,6 +23,7 @@ import OrderDetailDrawer from '../order/OrderDetailDrawer';
 import ShippingModal from '../shipping/ShippingModal';
 import BatchActionsBar from '../order/BatchActionsBar';
 import { BatchPackingSlips } from '../order/PackingSlip';
+import AddOrderModal from '../order/AddOrderModal';
 import MobilePipeline from './MobilePipeline';
 import type { Order, PipelineStage, PipelineStageConfig } from '../../types';
 import { DEFAULT_PIPELINE_STAGES } from '../../types';
@@ -125,7 +126,8 @@ function PipelineColumn({
   onCreateLabel,
   selectedOrderIds,
   onToggleSelection,
-  showCheckboxes
+  showCheckboxes,
+  onAddOrder
 }: {
   stage: PipelineStageConfig;
   orders: Order[];
@@ -134,6 +136,7 @@ function PipelineColumn({
   selectedOrderIds: string[];
   onToggleSelection: (orderId: string) => void;
   showCheckboxes: boolean;
+  onAddOrder?: () => void;
 }) {
   const {
     attributes,
@@ -199,10 +202,13 @@ function PipelineColumn({
       </SortableContext>
 
       {/* Add Order Button - only for New Orders column */}
-      {stage.id === 'new' && (
-        <button className="flex items-center justify-center gap-1.5 bg-white border border-gray-300 rounded-lg py-2 hover:border-[#6e6af0] hover:bg-[#6e6af0]/5 transition-all w-full">
+      {stage.id === 'new' && onAddOrder && (
+        <button
+          onClick={onAddOrder}
+          className="flex items-center justify-center gap-1.5 bg-white border border-gray-300 rounded-lg py-2 hover:border-[#6e6af0] hover:bg-[#6e6af0]/5 transition-all w-full"
+        >
           <PlusIcon />
-          <span className="text-xs font-medium text-gray-500">Sync Orders</span>
+          <span className="text-xs font-medium text-gray-500">Add Order</span>
         </button>
       )}
     </div>
@@ -226,13 +232,15 @@ export default function KanbanBoard() {
     toggleOrderSelection,
     clearOrderSelection,
     batchMoveOrders,
-    batchAddTag
+    batchAddTag,
+    addOrder
   } = useOrderStore();
 
   const [columns, setColumns] = useState<PipelineStageConfig[]>(DEFAULT_PIPELINE_STAGES);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<'order' | 'column' | null>(null);
   const [showPackingSlips, setShowPackingSlips] = useState(false);
+  const [showAddOrderModal, setShowAddOrderModal] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -426,6 +434,7 @@ export default function KanbanBoard() {
                   selectedOrderIds={selectedOrderIds}
                   onToggleSelection={toggleOrderSelection}
                   showCheckboxes={selectedOrderIds.length > 0}
+                  onAddOrder={column.id === 'new' ? () => setShowAddOrderModal(true) : undefined}
                 />
               ))}
             </div>
@@ -501,6 +510,16 @@ export default function KanbanBoard() {
           onClose={() => setShowPackingSlips(false)}
         />
       )}
+
+      {/* Add Order Modal */}
+      <AddOrderModal
+        isOpen={showAddOrderModal}
+        onClose={() => setShowAddOrderModal(false)}
+        onAdd={(order) => {
+          addOrder(order);
+          setShowAddOrderModal(false);
+        }}
+      />
     </div>
   );
 }
