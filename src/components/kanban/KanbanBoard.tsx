@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -22,6 +22,7 @@ import OrderCard from '../order/OrderCard';
 import OrderDetailDrawer from '../order/OrderDetailDrawer';
 import ShippingModal from '../shipping/ShippingModal';
 import BatchActionsBar from '../order/BatchActionsBar';
+import { BatchPackingSlips } from '../order/PackingSlip';
 import MobilePipeline from './MobilePipeline';
 import type { Order, PipelineStage, PipelineStageConfig } from '../../types';
 import { DEFAULT_PIPELINE_STAGES } from '../../types';
@@ -47,17 +48,24 @@ const PlusIcon = () => (
   </svg>
 );
 
+// Empty state for columns
+function EmptyColumnState({ stageName, stageEmoji }: { stageName: string; stageEmoji: string }) {
+  const messages: Record<string, string> = {
+    'New Orders': 'New orders from Etsy will appear here',
+    'Processing': 'Move orders here when you start working on them',
+    'Ready to Ship': 'Orders ready for shipping labels',
+    'Shipped': 'Orders with tracking numbers',
+    'Delivered': 'Successfully delivered orders',
+    'Needs Attention': 'Orders requiring your attention'
+  };
 
-const DragHandleIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="opacity-40">
-    <circle cx="5" cy="4" r="1.5" fill="#959BA3"/>
-    <circle cx="11" cy="4" r="1.5" fill="#959BA3"/>
-    <circle cx="5" cy="8" r="1.5" fill="#959BA3"/>
-    <circle cx="11" cy="8" r="1.5" fill="#959BA3"/>
-    <circle cx="5" cy="12" r="1.5" fill="#959BA3"/>
-    <circle cx="11" cy="12" r="1.5" fill="#959BA3"/>
-  </svg>
-);
+  return (
+    <div className="flex flex-col items-center justify-center py-8 px-4 text-center bg-gray-50/50 rounded-lg border border-dashed border-gray-200">
+      <span className="text-2xl mb-2">{stageEmoji}</span>
+      <p className="text-xs text-gray-500">{messages[stageName] || `No orders in ${stageName}`}</p>
+    </div>
+  );
+}
 
 // Sortable Order Card
 function SortableOrderCard({
@@ -109,78 +117,10 @@ function SortableOrderCard({
   );
 }
 
-// Editable Column Title
-function EditableColumnTitle({
-  title,
-  onTitleChange
-}: {
-  title: string;
-  onTitleChange: (newTitle: string) => void;
-}) {
-  const [isEditing, setIsEditing] = useState(false);
-  const [editValue, setEditValue] = useState(title);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isEditing && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [isEditing]);
-
-  const handleDoubleClick = () => {
-    setIsEditing(true);
-    setEditValue(title);
-  };
-
-  const handleBlur = () => {
-    setIsEditing(false);
-    if (editValue.trim() && editValue !== title) {
-      onTitleChange(editValue.trim());
-    } else {
-      setEditValue(title);
-    }
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleBlur();
-    } else if (e.key === 'Escape') {
-      setEditValue(title);
-      setIsEditing(false);
-    }
-  };
-
-  if (isEditing) {
-    return (
-      <input
-        ref={inputRef}
-        type="text"
-        value={editValue}
-        onChange={(e) => setEditValue(e.target.value)}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        className="text-[13px] md:text-[14px] font-medium text-black leading-[20px] tracking-[-0.14px] bg-white border border-[#6e6af0] rounded px-2 py-0.5 outline-none w-full max-w-[120px]"
-      />
-    );
-  }
-
-  return (
-    <span
-      className="text-[13px] md:text-[14px] font-medium text-black leading-[20px] tracking-[-0.14px] cursor-text hover:text-[#6e6af0] transition-colors"
-      onDoubleClick={handleDoubleClick}
-      title="Double-click to rename"
-    >
-      {title}
-    </span>
-  );
-}
-
 // Pipeline Column
 function PipelineColumn({
   stage,
   orders,
-  onTitleChange,
   onViewDetails,
   onCreateLabel,
   selectedOrderIds,
@@ -189,7 +129,6 @@ function PipelineColumn({
 }: {
   stage: PipelineStageConfig;
   orders: Order[];
-  onTitleChange: (newTitle: string) => void;
   onViewDetails: (orderId: string) => void;
   onCreateLabel: (orderId: string) => void;
   selectedOrderIds: string[];
@@ -215,37 +154,23 @@ function PipelineColumn({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex flex-col gap-[16px] flex-1 min-w-[280px] max-w-[380px]"
+      className="flex flex-col gap-[12px] flex-1 min-w-[260px] max-w-[340px]"
     >
-      {/* Column Header */}
-      <div className="flex items-center justify-between py-[10px] sticky top-0 bg-[#f7f7f7] z-10">
-        <div className="flex items-center gap-[10px] md:gap-[14px]">
-          {/* Drag handle */}
-          <div
-            {...attributes}
-            {...listeners}
-            className="cursor-grab active:cursor-grabbing p-1 hover:bg-white rounded transition-colors"
+      {/* Column Header - Simplified */}
+      <div
+        {...attributes}
+        {...listeners}
+        className="flex items-center justify-between py-2 px-1 sticky top-0 bg-[#f7f7f7] z-10 cursor-grab active:cursor-grabbing rounded hover:bg-gray-100 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-base">{stage.emoji}</span>
+          <span className="text-sm font-semibold text-gray-800">{stage.name}</span>
+          <span
+            className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: stage.color + '20', color: stage.color }}
           >
-            <DragHandleIcon />
-          </div>
-          <div className="flex items-center gap-[6px] md:gap-[8px]">
-            <span className="text-[14px]">{stage.emoji}</span>
-            <EditableColumnTitle
-              title={stage.name}
-              onTitleChange={onTitleChange}
-            />
-          </div>
-          <div
-            className="rounded-[10px] px-[10px] md:px-[13px] flex items-center justify-center shadow-sm"
-            style={{ backgroundColor: stage.color + '20' }}
-          >
-            <span
-              className="text-[10px] font-medium leading-[20px] tracking-[-0.1px]"
-              style={{ color: stage.color }}
-            >
-              {orders.length}
-            </span>
-          </div>
+            {orders.length}
+          </span>
         </div>
       </div>
 
@@ -254,28 +179,30 @@ function PipelineColumn({
         items={orders.map(o => o.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="flex flex-col gap-[10px] flex-1 overflow-y-auto pb-[8px] min-h-[100px]">
-          {orders.map((order) => (
-            <SortableOrderCard
-              key={order.id}
-              order={order}
-              onViewDetails={() => onViewDetails(order.id)}
-              onCreateLabel={() => onCreateLabel(order.id)}
-              isSelected={selectedOrderIds.includes(order.id)}
-              onSelect={() => onToggleSelection(order.id)}
-              showCheckbox={showCheckboxes}
-            />
-          ))}
+        <div className="flex flex-col gap-2 flex-1 overflow-y-auto pb-2 min-h-[80px]">
+          {orders.length === 0 ? (
+            <EmptyColumnState stageName={stage.name} stageEmoji={stage.emoji} />
+          ) : (
+            orders.map((order) => (
+              <SortableOrderCard
+                key={order.id}
+                order={order}
+                onViewDetails={() => onViewDetails(order.id)}
+                onCreateLabel={() => onCreateLabel(order.id)}
+                isSelected={selectedOrderIds.includes(order.id)}
+                onSelect={() => onToggleSelection(order.id)}
+                showCheckbox={showCheckboxes}
+              />
+            ))
+          )}
         </div>
       </SortableContext>
 
-      {/* Add Order Button (optional - for future) */}
+      {/* Add Order Button - only for New Orders column */}
       {stage.id === 'new' && (
-        <button className="flex items-center justify-center gap-[6px] bg-white border border-[#959ba3] rounded-[6px] px-[14px] py-[6px] hover:bg-[#f7f7f7] hover:border-[#6e6af0] transition-all duration-200 w-full flex-shrink-0">
+        <button className="flex items-center justify-center gap-1.5 bg-white border border-gray-300 rounded-lg py-2 hover:border-[#6e6af0] hover:bg-[#6e6af0]/5 transition-all w-full">
           <PlusIcon />
-          <span className="text-[12px] font-medium text-[#959ba3] leading-[20px] tracking-[-0.12px]">
-            Sync Orders
-          </span>
+          <span className="text-xs font-medium text-gray-500">Sync Orders</span>
         </button>
       )}
     </div>
@@ -305,6 +232,7 @@ export default function KanbanBoard() {
   const [columns, setColumns] = useState<PipelineStageConfig[]>(DEFAULT_PIPELINE_STAGES);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<'order' | 'column' | null>(null);
+  const [showPackingSlips, setShowPackingSlips] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -421,12 +349,6 @@ export default function KanbanBoard() {
     setActiveType(null);
   };
 
-  const handleTitleChange = (columnId: string, newTitle: string) => {
-    setColumns(cols => cols.map(col =>
-      col.id === columnId ? { ...col, name: newTitle } : col
-    ));
-  };
-
   const handleViewDetails = (orderId: string) => {
     openOrderDrawer(orderId);
   };
@@ -499,7 +421,6 @@ export default function KanbanBoard() {
                   key={column.id}
                   stage={column}
                   orders={getOrdersByStage(column.id as PipelineStage)}
-                  onTitleChange={(newTitle) => handleTitleChange(column.id, newTitle)}
                   onViewDetails={handleViewDetails}
                   onCreateLabel={handleCreateLabel}
                   selectedOrderIds={selectedOrderIds}
@@ -563,15 +484,23 @@ export default function KanbanBoard() {
         onClearSelection={clearOrderSelection}
         onMoveToStage={batchMoveOrders}
         onAddTag={batchAddTag}
-        onBulkPrint={() => {
-          // TODO: Implement bulk print
-          console.log('Printing packing slips for:', selectedOrderIds);
-        }}
+        onBulkPrint={() => setShowPackingSlips(true)}
         onBulkCreateLabels={() => {
-          // TODO: Implement bulk label creation
-          console.log('Creating labels for:', selectedOrderIds);
+          // Open shipping modal for first selected order
+          if (selectedOrderIds.length > 0) {
+            openShippingModal(selectedOrderIds[0]);
+          }
         }}
       />
+
+      {/* Batch Packing Slips Modal */}
+      {showPackingSlips && selectedOrderIds.length > 0 && (
+        <BatchPackingSlips
+          orders={orders.filter(o => selectedOrderIds.includes(o.id))}
+          customers={customers}
+          onClose={() => setShowPackingSlips(false)}
+        />
+      )}
     </div>
   );
 }
