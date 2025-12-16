@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useOrderStore } from '../../stores/orderStore';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -67,6 +68,8 @@ const UserAvatar = () => (
 export default function Header({ onMenuClick, title }: HeaderProps) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { orderFilters, setOrderFilters, activeView } = useOrderStore();
+  const searchValue = orderFilters.search || '';
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -99,15 +102,29 @@ export default function Header({ onMenuClick, title }: HeaderProps) {
           </h1>
         )}
 
-        {/* Search Bar */}
-        <div className="flex items-center gap-[6px] bg-[#f7f7f7] rounded-[6px] px-[8px] py-[6px] w-[140px] sm:w-[220px]">
-          <SearchIcon />
-          <input
-            type="text"
-            placeholder="Search orders..."
-            className="bg-transparent text-[12px] text-[#959ba3] leading-[20px] tracking-[-0.1px] outline-none w-full placeholder-[#959ba3]"
-          />
-        </div>
+        {/* Search Bar - only show on pipeline view */}
+        {activeView === 'pipeline' && (
+          <div className="flex items-center gap-[6px] bg-[#f7f7f7] rounded-[6px] px-[8px] py-[6px] w-[140px] sm:w-[220px]">
+            <SearchIcon />
+            <input
+              type="text"
+              placeholder="Search orders..."
+              value={searchValue}
+              onChange={(e) => setOrderFilters({ search: e.target.value })}
+              className="bg-transparent text-[12px] text-gray-900 leading-[20px] tracking-[-0.1px] outline-none w-full placeholder-[#959ba3]"
+            />
+            {searchValue && (
+              <button
+                onClick={() => setOrderFilters({ search: '' })}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12"/>
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Right side - User Profile */}

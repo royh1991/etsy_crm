@@ -24,6 +24,7 @@ import ShippingModal from '../shipping/ShippingModal';
 import BatchActionsBar from '../order/BatchActionsBar';
 import { BatchPackingSlips } from '../order/PackingSlip';
 import AddOrderModal from '../order/AddOrderModal';
+import FilterBar from '../order/FilterBar';
 import MobilePipeline from './MobilePipeline';
 import type { Order, PipelineStage, PipelineStageConfig } from '../../types';
 import { DEFAULT_PIPELINE_STAGES } from '../../types';
@@ -233,7 +234,8 @@ export default function KanbanBoard() {
     clearOrderSelection,
     batchMoveOrders,
     batchAddTag,
-    addOrder
+    addOrder,
+    getFilteredOrders
   } = useOrderStore();
 
   const [columns, setColumns] = useState<PipelineStageConfig[]>(DEFAULT_PIPELINE_STAGES);
@@ -241,6 +243,14 @@ export default function KanbanBoard() {
   const [activeType, setActiveType] = useState<'order' | 'column' | null>(null);
   const [showPackingSlips, setShowPackingSlips] = useState(false);
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
+
+  // Get filtered orders
+  const filteredOrders = getFilteredOrders();
+
+  // Helper to get filtered orders by stage
+  const getFilteredOrdersByStage = (stage: PipelineStage) => {
+    return filteredOrders.filter(o => o.pipelineStage === stage);
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -411,6 +421,9 @@ export default function KanbanBoard() {
   // Desktop view
   return (
     <div className="flex-1 bg-[#f7f7f7] overflow-hidden flex flex-col min-h-0">
+      {/* Filter Bar */}
+      <FilterBar />
+
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
@@ -428,7 +441,7 @@ export default function KanbanBoard() {
                 <PipelineColumn
                   key={column.id}
                   stage={column}
-                  orders={getOrdersByStage(column.id as PipelineStage)}
+                  orders={getFilteredOrdersByStage(column.id as PipelineStage)}
                   onViewDetails={handleViewDetails}
                   onCreateLabel={handleCreateLabel}
                   selectedOrderIds={selectedOrderIds}
