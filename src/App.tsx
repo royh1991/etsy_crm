@@ -21,11 +21,19 @@ function App() {
     closeCustomerDrawer,
     isCustomerDrawerOpen,
     selectedCustomerId,
-    customers
+    customers,
+    fetchOrders,
+    fetchCustomers
   } = useOrderStore();
 
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
+
+  // Fetch orders and customers from backend on mount
+  useEffect(() => {
+    fetchOrders();
+    fetchCustomers();
+  }, [fetchOrders, fetchCustomers]);
 
   // Handle responsive breakpoints
   useEffect(() => {

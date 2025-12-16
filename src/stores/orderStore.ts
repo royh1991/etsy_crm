@@ -1,7 +1,122 @@
 // Zustand store for Order and Customer management
 import { create } from 'zustand';
-import type { Order, Customer, PipelineStage, OrderFilters, CustomerFilters, OrderNote, CustomerFlag, CustomerFlagType } from '../types';
+import type { Order, Customer, PipelineStage, OrderFilters, CustomerFilters, OrderNote, CustomerFlag, CustomerFlagType, Address } from '../types';
 import { mockOrders, mockCustomers } from '../services/mockData';
+
+// API base URL - use backend in development
+const API_BASE = import.meta.env.DEV ? 'http://localhost:3001/api' : '/api';
+
+// Transform backend order data to frontend Order type
+function transformBackendOrder(order: any): Order {
+  // Transform shipping address to frontend format
+  const shippingAddress: Address = {
+    name: order.shippingAddress?.name || order.buyerName,
+    addressLine1: order.shippingAddress?.first_line || '',
+    addressLine2: order.shippingAddress?.second_line,
+    city: order.shippingAddress?.city || '',
+    state: order.shippingAddress?.state || '',
+    postalCode: order.shippingAddress?.zip || '',
+    country: order.shippingAddress?.country_iso === 'US' ? 'United States' :
+             order.shippingAddress?.country_iso === 'CA' ? 'Canada' :
+             order.shippingAddress?.country_iso || '',
+    countryCode: order.shippingAddress?.country_iso || 'US',
+  };
+
+  // Transform variations from Etsy API format to frontend format
+  const transformVariations = (variations: any[]): { name: string; value: string }[] => {
+    if (!variations || !Array.isArray(variations)) return [];
+    return variations.map((v: any) => ({
+      name: v.property_name || '',
+      value: Array.isArray(v.values) ? v.values[0] : v.values || '',
+    }));
+  };
+
+  return {
+    id: order.id,
+    etsyReceiptId: parseInt(order.etsyReceiptId) || 0,
+    orderNumber: order.orderNumber,
+    pipelineStage: order.pipelineStage?.replace('_', '-') as PipelineStage,
+    customerId: order.customerId,
+    buyerName: order.buyerName,
+    buyerEmail: order.buyerEmail,
+    shippingAddress,
+    items: order.items?.map((item: any) => ({
+      id: item.id,
+      listingId: item.listingId || parseInt(item.etsyListingId) || 0,
+      title: item.title,
+      description: item.description || item.personalization || '',
+      quantity: item.quantity,
+      price: item.price,
+      imageUrl: item.imageUrl,
+      sku: item.sku,
+      variations: transformVariations(item.variations),
+    })) || [],
+    subtotal: order.subtotal,
+    shippingCost: order.shippingCost,
+    tax: order.taxAmount || order.tax || 0,
+    totalAmount: order.totalAmount,
+    currencyCode: order.currency || 'USD',
+    orderDate: new Date(order.orderDate || order.orderedAt),
+    shipByDate: new Date(order.shipByDate),
+    etsyStatus: 'paid', // Default to paid since these are real orders
+    isPaid: true,
+    isShipped: order.isShipped || false,
+    trackingNumber: order.trackingNumber,
+    carrierName: order.carrierName,
+    labelUrl: order.labelUrl,
+    trackingStatus: order.isShipped ? (order.deliveredAt ? 'delivered' : 'in_transit') : undefined,
+    estimatedDeliveryDate: order.estimatedDelivery ? new Date(order.estimatedDelivery) : undefined,
+    isGift: order.isGift || false,
+    giftMessage: order.giftMessage,
+    buyerNote: order.buyerNote,
+    tags: order.tags || [],
+    notes: order.notes?.map((n: any) => ({
+      id: n.id,
+      content: n.content,
+      createdAt: new Date(n.createdAt),
+    })) || [],
+    history: order.history?.map((h: any) => ({
+      id: h.id,
+      type: h.type?.toLowerCase() as any,
+      description: h.description,
+      timestamp: new Date(h.createdAt || h.timestamp),
+      metadata: h.metadata,
+    })) || [],
+    hasIssue: order.hasIssue || false,
+    issueType: order.issueDescription ? 'delivery_dispute' as CustomerFlagType : undefined,
+    createdAt: new Date(order.createdAt),
+    updatedAt: new Date(order.updatedAt),
+  };
+}
+
+// Transform backend customer data to frontend Customer type
+function transformBackendCustomer(customer: any): Customer {
+  return {
+    id: customer.id,
+    etsyBuyerId: parseInt(customer.etsyBuyerId) || 0,
+    name: customer.name,
+    email: customer.email,
+    orderCount: customer.orderCount || 0,
+    totalSpent: customer.totalSpent || 0,
+    firstOrderDate: customer.firstOrderAt ? new Date(customer.firstOrderAt) : new Date(),
+    lastOrderDate: customer.lastOrderAt ? new Date(customer.lastOrderAt) : new Date(),
+    averageOrderValue: customer.averageOrderValue || 0,
+    isRepeatCustomer: customer.isRepeatCustomer || false,
+    tier: customer.tier?.toLowerCase() as any || 'regular',
+    averageRating: customer.rating,
+    reviewCount: customer.reviewCount || 0,
+    hasLeftReview: (customer.reviewCount || 0) > 0,
+    flags: customer.flags?.map((f: any) => ({
+      type: f.type?.toLowerCase() as CustomerFlagType,
+      reason: f.reason,
+      createdAt: new Date(f.createdAt),
+    })) || [],
+    isFlagged: customer.isFlagged || (customer.flags?.length || 0) > 0,
+    notes: customer.notes || '',
+    createdAt: new Date(customer.createdAt),
+    updatedAt: new Date(customer.updatedAt),
+  };
+}
 
 interface OrderStore {
   // Order state
@@ -9,11 +124,15 @@ interface OrderStore {
   selectedOrderId: string | null;
   selectedOrderIds: string[];  // For batch selection
   orderFilters: OrderFilters;
+  isLoadingOrders: boolean;
+  ordersError: string | null;
 
   // Customer state
   customers: Customer[];
   selectedCustomerId: string | null;
   customerFilters: CustomerFilters;
+  isLoadingCustomers: boolean;
+  customersError: string | null;
 
   // UI state
   isOrderDrawerOpen: boolean;
@@ -21,6 +140,10 @@ interface OrderStore {
   isCustomerDrawerOpen: boolean;
   isFlagModalOpen: boolean;
   activeView: 'pipeline' | 'customers' | 'analytics' | 'settings';
+
+  // API actions
+  fetchOrders: () => Promise<void>;
+  fetchCustomers: () => Promise<void>;
 
   // Order actions
   setOrders: (orders: Order[]) => void;
@@ -69,21 +192,60 @@ interface OrderStore {
 }
 
 export const useOrderStore = create<OrderStore>((set, get) => ({
-  // Initial state
+  // Initial state - start with mock data, fetch from API on load
   orders: mockOrders,
   selectedOrderId: null,
   selectedOrderIds: [],
   orderFilters: {},
+  isLoadingOrders: false,
+  ordersError: null,
 
   customers: mockCustomers,
   selectedCustomerId: null,
   customerFilters: {},
+  isLoadingCustomers: false,
+  customersError: null,
 
   isOrderDrawerOpen: false,
   isShippingModalOpen: false,
   isCustomerDrawerOpen: false,
   isFlagModalOpen: false,
   activeView: 'pipeline',
+
+  // API actions
+  fetchOrders: async () => {
+    set({ isLoadingOrders: true, ordersError: null });
+    try {
+      const response = await fetch(`${API_BASE}/orders/dev/all`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch orders: ${response.status}`);
+      }
+      const data = await response.json();
+      const orders = data.orders.map(transformBackendOrder);
+      set({ orders, isLoadingOrders: false });
+      console.log(`Loaded ${orders.length} orders from backend`);
+    } catch (error) {
+      console.warn('Failed to fetch from backend, using mock data:', error);
+      set({ orders: mockOrders, isLoadingOrders: false, ordersError: (error as Error).message });
+    }
+  },
+
+  fetchCustomers: async () => {
+    set({ isLoadingCustomers: true, customersError: null });
+    try {
+      const response = await fetch(`${API_BASE}/orders/dev/customers`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch customers: ${response.status}`);
+      }
+      const data = await response.json();
+      const customers = data.customers.map(transformBackendCustomer);
+      set({ customers, isLoadingCustomers: false });
+      console.log(`Loaded ${customers.length} customers from backend`);
+    } catch (error) {
+      console.warn('Failed to fetch from backend, using mock data:', error);
+      set({ customers: mockCustomers, isLoadingCustomers: false, customersError: (error as Error).message });
+    }
+  },
 
   // Order actions
   setOrders: (orders) => set({ orders }),

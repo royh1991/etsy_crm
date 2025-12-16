@@ -6,7 +6,130 @@ import { AppError } from '../middleware/errorHandler.js';
 
 export const ordersRouter = Router();
 
-// All routes require authentication
+// ============================================
+// DEVELOPMENT-ONLY PUBLIC ENDPOINTS
+// These bypass auth for frontend testing
+// ============================================
+if (process.env.NODE_ENV === 'development') {
+  // GET /api/orders/dev/all - Get all orders without auth (dev only)
+  ordersRouter.get('/dev/all', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orders = await prisma.order.findMany({
+        include: {
+          customer: {
+            select: { id: true, name: true, email: true, tier: true, isRepeatCustomer: true, orderCount: true }
+          },
+          items: true,
+          _count: { select: { notes: true } }
+        },
+        orderBy: [{ pipelineStage: 'asc' }, { sortOrder: 'asc' }, { orderedAt: 'desc' }],
+      });
+
+      // Transform to match frontend Order type
+      const transformedOrders = orders.map(order => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        etsyReceiptId: order.etsyReceiptId,
+        customerId: order.customerId,
+        buyerName: order.customer.name,
+        buyerEmail: order.customer.email,
+        totalAmount: parseFloat(order.totalAmount.toString()),
+        subtotal: parseFloat(order.subtotal.toString()),
+        shippingCost: parseFloat(order.shippingCost.toString()),
+        taxAmount: parseFloat(order.taxAmount.toString()),
+        discountAmount: parseFloat(order.discountAmount.toString()),
+        currency: order.currency,
+        pipelineStage: order.pipelineStage.toLowerCase().replace('_', '-') as any,
+        orderDate: order.orderedAt,
+        shipByDate: order.shipByDate,
+        shippedAt: order.shippedAt,
+        deliveredAt: order.deliveredAt,
+        isGift: order.isGift,
+        giftMessage: order.giftMessage,
+        buyerNote: order.buyerNote,
+        hasIssue: order.hasIssue,
+        issueDescription: order.issueDescription,
+        isShipped: order.isShipped,
+        trackingNumber: order.trackingNumber,
+        carrierName: order.carrierName,
+        trackingUrl: order.trackingUrl,
+        shippingAddress: order.shippingAddress,
+        tags: order.tags,
+        items: order.items.map(item => ({
+          id: item.id,
+          listingId: parseInt(item.etsyListingId || '0'),
+          transactionId: item.etsyTransactionId,
+          title: item.title,
+          description: item.personalization || '',
+          quantity: item.quantity,
+          price: parseFloat(item.price.toString()),
+          imageUrl: item.imageUrl,
+          sku: item.sku,
+          variations: item.variations,
+        })),
+        notes: [],
+        history: [],
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+        // Customer tier info
+        customerTier: order.customer.tier.toLowerCase(),
+        isRepeatCustomer: order.customer.isRepeatCustomer,
+        customerOrderCount: order.customer.orderCount,
+      }));
+
+      res.json({ orders: transformedOrders, total: transformedOrders.length });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // GET /api/orders/dev/customers - Get all customers without auth (dev only)
+  ordersRouter.get('/dev/customers', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const customers = await prisma.customer.findMany({
+        include: {
+          flags: true,
+          _count: { select: { orders: true } }
+        },
+        orderBy: { totalSpent: 'desc' },
+      });
+
+      const transformedCustomers = customers.map(customer => ({
+        id: customer.id,
+        etsyBuyerId: customer.etsyBuyerId,
+        name: customer.name,
+        email: customer.email,
+        phone: customer.phone,
+        orderCount: customer.orderCount,
+        totalSpent: parseFloat(customer.totalSpent.toString()),
+        averageOrderValue: parseFloat(customer.averageOrderValue.toString()),
+        isRepeatCustomer: customer.isRepeatCustomer,
+        tier: customer.tier.toLowerCase(),
+        rating: customer.rating ? parseFloat(customer.rating.toString()) : null,
+        reviewCount: customer.reviewCount,
+        notes: customer.notes,
+        isFlagged: customer.flags.length > 0,
+        flags: customer.flags.map(f => ({
+          type: f.type.toLowerCase(),
+          reason: f.reason,
+          createdAt: f.createdAt,
+        })),
+        firstOrderAt: customer.firstOrderAt,
+        lastOrderAt: customer.lastOrderAt,
+        createdAt: customer.createdAt,
+        updatedAt: customer.updatedAt,
+      }));
+
+      res.json({ customers: transformedCustomers, total: transformedCustomers.length });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  console.log('📦 Development endpoints enabled: /api/orders/dev/all, /api/orders/dev/customers');
+}
+
+// All other routes require authentication
 ordersRouter.use(requireAuth);
 
 // Validation schemas
