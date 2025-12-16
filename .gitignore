@@ -45,7 +45,32 @@ coverage/
 
 # OS files
 Thumbs.db
+.DS_Store
+._*
 
 # Temporary files
 *.tmp
 *.temp
+
+# Server build output
+server/dist/
+
+# Prisma
+*.db
+*.db-journal
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Vercel/Netlify
+.vercel
+.netlify
+
+# Turbo
+.turbo
+
+# ESLint cache
+.eslintcache
