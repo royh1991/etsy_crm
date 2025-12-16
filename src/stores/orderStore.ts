@@ -192,18 +192,18 @@ interface OrderStore {
 }
 
 export const useOrderStore = create<OrderStore>((set, get) => ({
-  // Initial state - start with mock data, fetch from API on load
-  orders: mockOrders,
+  // Initial state - start empty, fetch from API on load
+  orders: [],
   selectedOrderId: null,
   selectedOrderIds: [],
   orderFilters: {},
-  isLoadingOrders: false,
+  isLoadingOrders: true,  // Start as loading
   ordersError: null,
 
-  customers: mockCustomers,
+  customers: [],
   selectedCustomerId: null,
   customerFilters: {},
-  isLoadingCustomers: false,
+  isLoadingCustomers: true,  // Start as loading
   customersError: null,
 
   isOrderDrawerOpen: false,
@@ -254,38 +254,79 @@ export const useOrderStore = create<OrderStore>((set, get) => ({
     orders: [order, ...state.orders],
   })),
 
-  moveOrder: (orderId, newStage) => set((state) => ({
-    orders: state.orders.map((order) => {
-      if (order.id === orderId) {
-        const now = new Date();
-        return {
-          ...order,
-          pipelineStage: newStage,
-          updatedAt: now,
-          history: [
-            ...order.history,
-            {
-              id: `hist-${Date.now()}`,
-              type: 'moved' as const,
-              description: `Moved to ${newStage.replace('-', ' ')}`,
-              timestamp: now
-            }
-          ]
-        };
-      }
-      return order;
-    })
-  })),
+  moveOrder: (orderId, newStage) => {
+    // Optimistically update UI first
+    set((state) => ({
+      orders: state.orders.map((order) => {
+        if (order.id === orderId) {
+          const now = new Date();
+          return {
+            ...order,
+            pipelineStage: newStage,
+            updatedAt: now,
+            history: [
+              ...order.history,
+              {
+                id: `hist-${Date.now()}`,
+                type: 'moved' as const,
+                description: `Moved to ${newStage.replace('-', ' ')}`,
+                timestamp: now
+              }
+            ]
+          };
+        }
+        return order;
+      })
+    }));
 
-  reorderOrders: (stageId, sourceIndex, destIndex) => set((state) => {
+    // Persist to backend
+    fetch(`${API_BASE}/orders/dev/${orderId}/stage`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pipelineStage: newStage })
+    })
+      .then(res => {
+        if (!res.ok) {
+          console.error('Failed to persist order stage change:', res.statusText);
+        } else {
+          console.log(`Order ${orderId} stage persisted to ${newStage}`);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to persist order stage change:', err);
+      });
+  },
+
+  reorderOrders: (stageId, sourceIndex, destIndex) => {
+    // Get current state to compute new order
+    const state = get();
     const stageOrders = state.orders.filter(o => o.pipelineStage === stageId);
     const otherOrders = state.orders.filter(o => o.pipelineStage !== stageId);
 
     const [moved] = stageOrders.splice(sourceIndex, 1);
     stageOrders.splice(destIndex, 0, moved);
 
-    return { orders: [...otherOrders, ...stageOrders] };
-  }),
+    // Optimistically update UI
+    set({ orders: [...otherOrders, ...stageOrders] });
+
+    // Persist to backend - send array of order IDs in new order
+    const orderIds = stageOrders.map(o => o.id);
+    fetch(`${API_BASE}/orders/dev/reorder`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stageId, orderIds })
+    })
+      .then(res => {
+        if (!res.ok) {
+          console.error('Failed to persist order reordering:', res.statusText);
+        } else {
+          console.log(`Reordered ${orderIds.length} orders in ${stageId}`);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to persist order reordering:', err);
+      });
+  },
 
   selectOrder: (orderId) => set({ selectedOrderId: orderId }),
 

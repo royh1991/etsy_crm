@@ -71,6 +71,7 @@ if (process.env.NODE_ENV === 'development') {
         history: [],
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
+        sortOrder: order.sortOrder,  // Include sort order for frontend
         // Customer tier info
         customerTier: order.customer.tier.toLowerCase(),
         isRepeatCustomer: order.customer.isRepeatCustomer,
@@ -126,7 +127,94 @@ if (process.env.NODE_ENV === 'development') {
     }
   });
 
-  console.log('📦 Development endpoints enabled: /api/orders/dev/all, /api/orders/dev/customers');
+  // PATCH /api/orders/dev/:id/stage - Update order stage without auth (dev only)
+  ordersRouter.patch('/dev/:id/stage', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { pipelineStage } = req.body;
+
+      if (!pipelineStage) {
+        return res.status(400).json({ error: 'pipelineStage is required' });
+      }
+
+      // Convert frontend format to DB format: "ready-to-ship" -> "READY_TO_SHIP"
+      const dbStage = pipelineStage.toUpperCase().replace(/-/g, '_');
+
+      const validStages = ['NEW', 'PROCESSING', 'READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'NEEDS_ATTENTION'];
+      if (!validStages.includes(dbStage)) {
+        return res.status(400).json({ error: `Invalid stage. Must be one of: ${validStages.join(', ')}` });
+      }
+
+      const order = await prisma.order.findUnique({
+        where: { id: req.params.id }
+      });
+
+      if (!order) {
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const updatedOrder = await prisma.order.update({
+        where: { id: req.params.id },
+        data: {
+          pipelineStage: dbStage as any,
+          updatedAt: new Date()
+        },
+        include: {
+          customer: {
+            select: { id: true, name: true, email: true, tier: true }
+          },
+          items: true
+        }
+      });
+
+      // Also create history entry
+      await prisma.orderHistory.create({
+        data: {
+          orderId: order.id,
+          type: 'STAGE_CHANGED',
+          description: `Stage changed from ${order.pipelineStage} to ${dbStage}`
+        }
+      });
+
+      res.json({
+        id: updatedOrder.id,
+        pipelineStage: updatedOrder.pipelineStage.toLowerCase().replace('_', '-'),
+        updatedAt: updatedOrder.updatedAt
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // PATCH /api/orders/dev/reorder - Reorder cards within a column (dev only)
+  ordersRouter.patch('/dev/reorder', async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { stageId, orderIds } = req.body;
+
+      if (!stageId || !orderIds || !Array.isArray(orderIds)) {
+        return res.status(400).json({ error: 'stageId and orderIds array are required' });
+      }
+
+      // Convert frontend stage format to DB format
+      const dbStage = stageId.toUpperCase().replace(/-/g, '_');
+
+      // Update sortOrder for each order in the array
+      await prisma.$transaction(
+        orderIds.map((orderId: string, index: number) =>
+          prisma.order.update({
+            where: { id: orderId },
+            data: { sortOrder: index }
+          })
+        )
+      );
+
+      console.log(`Reordered ${orderIds.length} orders in stage ${dbStage}`);
+      res.json({ success: true, reordered: orderIds.length });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  console.log('📦 Development endpoints enabled: /api/orders/dev/all, /api/orders/dev/customers, /api/orders/dev/:id/stage, /api/orders/dev/reorder');
 }
 
 // All other routes require authentication

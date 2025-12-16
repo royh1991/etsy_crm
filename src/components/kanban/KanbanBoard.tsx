@@ -235,14 +235,45 @@ export default function KanbanBoard() {
     batchMoveOrders,
     batchAddTag,
     addOrder,
-    getFilteredOrders
+    getFilteredOrders,
+    isLoadingOrders
   } = useOrderStore();
 
-  const [columns, setColumns] = useState<PipelineStageConfig[]>(DEFAULT_PIPELINE_STAGES);
+  // Load column order from localStorage, fallback to default
+  const [columns, setColumns] = useState<PipelineStageConfig[]>(() => {
+    const saved = localStorage.getItem('kanban-column-order');
+    if (saved) {
+      try {
+        const savedIds = JSON.parse(saved) as string[];
+        // Reconstruct columns in saved order, ensuring all stages are present
+        const orderedColumns: PipelineStageConfig[] = [];
+        for (const id of savedIds) {
+          const stage = DEFAULT_PIPELINE_STAGES.find(s => s.id === id);
+          if (stage) orderedColumns.push(stage);
+        }
+        // Add any missing stages at the end
+        for (const stage of DEFAULT_PIPELINE_STAGES) {
+          if (!orderedColumns.find(c => c.id === stage.id)) {
+            orderedColumns.push(stage);
+          }
+        }
+        return orderedColumns;
+      } catch {
+        return DEFAULT_PIPELINE_STAGES;
+      }
+    }
+    return DEFAULT_PIPELINE_STAGES;
+  });
   const [activeId, setActiveId] = useState<string | null>(null);
   const [activeType, setActiveType] = useState<'order' | 'column' | null>(null);
   const [showPackingSlips, setShowPackingSlips] = useState(false);
   const [showAddOrderModal, setShowAddOrderModal] = useState(false);
+
+  // Persist column order to localStorage when it changes
+  useEffect(() => {
+    const columnIds = columns.map(c => c.id);
+    localStorage.setItem('kanban-column-order', JSON.stringify(columnIds));
+  }, [columns]);
 
   // Get filtered orders
   const filteredOrders = getFilteredOrders();
@@ -419,6 +450,21 @@ export default function KanbanBoard() {
   }
 
   // Desktop view
+  // Show loading state while fetching orders
+  if (isLoadingOrders) {
+    return (
+      <div className="flex-1 bg-[#f7f7f7] overflow-hidden flex flex-col min-h-0">
+        <FilterBar />
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#6e6af0] mx-auto mb-3"></div>
+            <p className="text-sm text-gray-500">Loading orders...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 bg-[#f7f7f7] overflow-hidden flex flex-col min-h-0">
       {/* Filter Bar */}
