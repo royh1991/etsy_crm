@@ -1,5 +1,6 @@
 interface HeaderProps {
   onMenuClick: () => void;
+  title?: string;
 }
 
 const MenuIcon = () => (
@@ -42,11 +43,11 @@ const UserAvatar = () => (
   </div>
 );
 
-export default function Header({ onMenuClick }: HeaderProps) {
+export default function Header({ onMenuClick, title }: HeaderProps) {
   return (
     <div className="h-[60px] md:h-[70px] bg-white border-b-2 border-[#f7f7f7] flex items-center justify-between px-[16px] md:px-[24px] flex-shrink-0">
-      {/* Left side - Menu button (mobile) and Search Bar */}
-      <div className="flex items-center gap-[12px]">
+      {/* Left side - Menu button (mobile), Title, and Search Bar */}
+      <div className="flex items-center gap-[12px] md:gap-[16px]">
         {/* Menu button for toggling sidebar */}
         <button
           onClick={onMenuClick}
@@ -55,13 +56,20 @@ export default function Header({ onMenuClick }: HeaderProps) {
           <MenuIcon />
         </button>
 
+        {/* Page Title */}
+        {title && (
+          <h1 className="text-lg font-semibold text-gray-900 hidden md:block">
+            {title}
+          </h1>
+        )}
+
         {/* Search Bar */}
-        <div className="flex items-center gap-[6px] bg-[#f7f7f7] rounded-[6px] px-[8px] py-[6px] w-[140px] sm:w-[182px]">
+        <div className="flex items-center gap-[6px] bg-[#f7f7f7] rounded-[6px] px-[8px] py-[6px] w-[140px] sm:w-[220px]">
           <SearchIcon />
           <input
             type="text"
-            placeholder="Search"
-            className="bg-transparent text-[10px] text-[#959ba3] leading-[20px] tracking-[-0.1px] outline-none w-full placeholder-[#959ba3]"
+            placeholder="Search orders..."
+            className="bg-transparent text-[12px] text-[#959ba3] leading-[20px] tracking-[-0.1px] outline-none w-full placeholder-[#959ba3]"
           />
         </div>
       </div>

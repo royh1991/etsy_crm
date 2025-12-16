@@ -4,11 +4,16 @@ import ProjectSidebar from './components/sidebar/ProjectSidebar';
 import Header from './components/header/Header';
 import ProjectHeader from './components/header/ProjectHeader';
 import KanbanBoard from './components/kanban/KanbanBoard';
+import CustomerList from './components/customer/CustomerList';
+import Dashboard from './components/analytics/Dashboard';
+import { useOrderStore } from './stores/orderStore';
 
 function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [projectSidebarCollapsed, setProjectSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+
+  const { activeView, openCustomerDrawer } = useOrderStore();
 
   // Handle responsive breakpoints
   useEffect(() => {
@@ -35,6 +40,41 @@ function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const getViewTitle = () => {
+    switch (activeView) {
+      case 'pipeline':
+        return 'Order Pipeline';
+      case 'customers':
+        return 'Customers';
+      case 'analytics':
+        return 'Dashboard';
+      default:
+        return 'Etsy CRM';
+    }
+  };
+
+  const renderMainContent = () => {
+    switch (activeView) {
+      case 'pipeline':
+        return (
+          <>
+            <ProjectHeader />
+            <KanbanBoard />
+          </>
+        );
+      case 'customers':
+        return (
+          <div className="flex-1 p-4 md:p-6 overflow-hidden">
+            <CustomerList onSelectCustomer={(id) => openCustomerDrawer(id)} />
+          </div>
+        );
+      case 'analytics':
+        return <Dashboard />;
+      default:
+        return <KanbanBoard />;
+    }
+  };
+
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#f7f7f7]">
       {/* Left Icon Sidebar */}
@@ -44,11 +84,13 @@ function App() {
         isMobile={isMobile}
       />
 
-      {/* Left Project Sidebar */}
-      <ProjectSidebar
-        collapsed={projectSidebarCollapsed}
-        onToggle={() => setProjectSidebarCollapsed(!projectSidebarCollapsed)}
-      />
+      {/* Left Project Sidebar - only show for pipeline and analytics views */}
+      {(activeView === 'pipeline' || activeView === 'analytics') && (
+        <ProjectSidebar
+          collapsed={projectSidebarCollapsed}
+          onToggle={() => setProjectSidebarCollapsed(!projectSidebarCollapsed)}
+        />
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
@@ -61,13 +103,11 @@ function App() {
               setProjectSidebarCollapsed(!projectSidebarCollapsed);
             }
           }}
+          title={getViewTitle()}
         />
 
-        {/* Project Header */}
-        <ProjectHeader />
-
-        {/* Kanban Board */}
-        <KanbanBoard />
+        {/* Main Content */}
+        {renderMainContent()}
       </div>
     </div>
   );

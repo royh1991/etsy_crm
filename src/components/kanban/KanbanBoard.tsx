@@ -18,8 +18,12 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import TaskCard from './TaskCard';
-import type { TaskCardProps } from './TaskCard';
+import OrderCard from '../order/OrderCard';
+import OrderDetailDrawer from '../order/OrderDetailDrawer';
+import ShippingModal from '../shipping/ShippingModal';
+import type { Order, PipelineStage, PipelineStageConfig } from '../../types';
+import { DEFAULT_PIPELINE_STAGES } from '../../types';
+import { useOrderStore } from '../../stores/orderStore';
 
 const PlusIcon = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -46,109 +50,19 @@ const DragHandleIcon = () => (
   </svg>
 );
 
-interface Task extends TaskCardProps {
-  id: string;
-}
+// Sortable Order Card
+function SortableOrderCard({
+  order,
+  onViewDetails,
+  onCreateLabel
+}: {
+  order: Order;
+  onViewDetails: () => void;
+  onCreateLabel: () => void;
+}) {
+  const { customers } = useOrderStore();
+  const customer = customers.find(c => c.id === order.customerId);
 
-interface Column {
-  id: string;
-  emoji: string;
-  title: string;
-  tasks: Task[];
-  showMenu?: boolean;
-}
-
-const initialColumns: Column[] = [
-  {
-    id: 'new',
-    emoji: '🆕',
-    title: 'New',
-    showMenu: true,
-    tasks: [
-      {
-        id: 'task-1',
-        title: 'AST Builder',
-        description: 'Create an Abstract Syntax Tree using tokens and TreeSitter',
-        tags: [
-          { label: 'Must', type: 'must' },
-          { label: 'Medium', type: 'medium' }
-        ],
-        assignees: [{ color: '#ffb6b6' }]
-      },
-      {
-        id: 'task-2',
-        title: 'Change title',
-        description: 'Change title website to InnoAST',
-        tags: [{ label: 'Tiny', type: 'tiny' }],
-        assignees: [{ color: '#ffb6b6' }]
-      },
-      {
-        id: 'task-3',
-        title: 'Change title',
-        description: 'Change title website to InnoAST',
-        tags: [{ label: 'Tiny', type: 'tiny' }],
-        assignees: [{ color: '#b6edff' }]
-      }
-    ]
-  },
-  {
-    id: 'in-progress',
-    emoji: '🏗',
-    title: 'In progress',
-    showMenu: true,
-    tasks: [
-      {
-        id: 'task-4',
-        title: 'JavaScript lexer',
-        description: 'Research JavaScript grammar and provide an overview on what to...',
-        tags: [{ label: 'Huge', type: 'huge' }],
-        assignees: [{ color: '#ffb6b6' }, { color: '#b6edff' }]
-      }
-    ]
-  },
-  {
-    id: 'review',
-    emoji: '👀',
-    title: 'Review',
-    showMenu: true,
-    tasks: []
-  },
-  {
-    id: 'done',
-    emoji: '✅',
-    title: 'Done',
-    showMenu: false,
-    tasks: [
-      {
-        id: 'task-5',
-        title: 'Docker Image',
-        description: 'Set up Docker Image and Docker Compose with K8s',
-        tags: [{ label: 'Medium', type: 'medium' }],
-        assignees: [{ color: '#cdffb6' }]
-      },
-      {
-        id: 'task-6',
-        title: 'UX/UI Testing',
-        description: 'Create a usability tests in product developing team',
-        tags: [{ label: 'Medium', type: 'medium' }],
-        assignees: [{ color: '#b6edff' }]
-      },
-      {
-        id: 'task-7',
-        title: 'Clear Documentation',
-        description: 'Update documentation on development workflow',
-        tags: [
-          { label: 'Must', type: 'must' },
-          { label: 'Tiny', type: 'tiny' }
-        ],
-        assignees: [{ color: '#ffb6b6' }]
-      }
-    ]
-  }
-];
-
-// Sortable Task Card
-function SortableTaskCard({ task }: { task: Task }) {
   const {
     attributes,
     listeners,
@@ -156,7 +70,7 @@ function SortableTaskCard({ task }: { task: Task }) {
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: task.id });
+  } = useSortable({ id: order.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -166,7 +80,13 @@ function SortableTaskCard({ task }: { task: Task }) {
 
   return (
     <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
-      <TaskCard {...task} />
+      <OrderCard
+        order={order}
+        customer={customer}
+        onViewDetails={onViewDetails}
+        onCreateLabel={onCreateLabel}
+        isDragging={isDragging}
+      />
     </div>
   );
 }
@@ -238,13 +158,19 @@ function EditableColumnTitle({
   );
 }
 
-// Sortable Column
-function SortableColumn({
-  column,
-  onTitleChange
+// Pipeline Column
+function PipelineColumn({
+  stage,
+  orders,
+  onTitleChange,
+  onViewDetails,
+  onCreateLabel
 }: {
-  column: Column;
-  onTitleChange: (columnId: string, newTitle: string) => void;
+  stage: PipelineStageConfig;
+  orders: Order[];
+  onTitleChange: (newTitle: string) => void;
+  onViewDetails: (orderId: string) => void;
+  onCreateLabel: (orderId: string) => void;
 }) {
   const {
     attributes,
@@ -253,7 +179,7 @@ function SortableColumn({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: column.id });
+  } = useSortable({ id: stage.id });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -265,7 +191,7 @@ function SortableColumn({
     <div
       ref={setNodeRef}
       style={style}
-      className="flex flex-col gap-[16px] flex-1 min-w-[220px] max-w-[400px]"
+      className="flex flex-col gap-[16px] flex-1 min-w-[280px] max-w-[380px]"
     >
       {/* Column Header */}
       <div className="flex items-center justify-between py-[10px] sticky top-0 bg-[#f7f7f7] z-10">
@@ -279,52 +205,76 @@ function SortableColumn({
             <DragHandleIcon />
           </div>
           <div className="flex items-center gap-[6px] md:gap-[8px]">
-            <span className="text-[14px]">{column.emoji}</span>
+            <span className="text-[14px]">{stage.emoji}</span>
             <EditableColumnTitle
-              title={column.title}
-              onTitleChange={(newTitle) => onTitleChange(column.id, newTitle)}
+              title={stage.name}
+              onTitleChange={onTitleChange}
             />
           </div>
-          <div className="bg-white rounded-[10px] px-[10px] md:px-[13px] flex items-center justify-center shadow-sm">
-            <span className="text-[10px] font-medium text-black leading-[20px] tracking-[-0.1px]">
-              {column.tasks.length}
+          <div
+            className="rounded-[10px] px-[10px] md:px-[13px] flex items-center justify-center shadow-sm"
+            style={{ backgroundColor: stage.color + '20' }}
+          >
+            <span
+              className="text-[10px] font-medium leading-[20px] tracking-[-0.1px]"
+              style={{ color: stage.color }}
+            >
+              {orders.length}
             </span>
           </div>
         </div>
-        {column.showMenu && (
-          <button className="p-[4px] hover:bg-white rounded transition-colors">
-            <MenuIcon />
-          </button>
-        )}
+        <button className="p-[4px] hover:bg-white rounded transition-colors">
+          <MenuIcon />
+        </button>
       </div>
 
-      {/* Tasks Container */}
+      {/* Orders Container */}
       <SortableContext
-        items={column.tasks.map(t => t.id)}
+        items={orders.map(o => o.id)}
         strategy={verticalListSortingStrategy}
       >
-        <div className="flex flex-col gap-[8px] flex-1 overflow-y-auto pb-[8px] min-h-[100px]">
-          {column.tasks.map((task) => (
-            <SortableTaskCard key={task.id} task={task} />
+        <div className="flex flex-col gap-[10px] flex-1 overflow-y-auto pb-[8px] min-h-[100px]">
+          {orders.map((order) => (
+            <SortableOrderCard
+              key={order.id}
+              order={order}
+              onViewDetails={() => onViewDetails(order.id)}
+              onCreateLabel={() => onCreateLabel(order.id)}
+            />
           ))}
         </div>
       </SortableContext>
 
-      {/* Add Task Button */}
-      <button className="flex items-center justify-center gap-[6px] bg-white border border-[#959ba3] rounded-[6px] px-[14px] py-[6px] hover:bg-[#f7f7f7] hover:border-[#6e6af0] transition-all duration-200 w-full flex-shrink-0">
-        <PlusIcon />
-        <span className="text-[12px] font-medium text-[#959ba3] leading-[20px] tracking-[-0.12px]">
-          Add Task
-        </span>
-      </button>
+      {/* Add Order Button (optional - for future) */}
+      {stage.id === 'new' && (
+        <button className="flex items-center justify-center gap-[6px] bg-white border border-[#959ba3] rounded-[6px] px-[14px] py-[6px] hover:bg-[#f7f7f7] hover:border-[#6e6af0] transition-all duration-200 w-full flex-shrink-0">
+          <PlusIcon />
+          <span className="text-[12px] font-medium text-[#959ba3] leading-[20px] tracking-[-0.12px]">
+            Sync Orders
+          </span>
+        </button>
+      )}
     </div>
   );
 }
 
 export default function KanbanBoard() {
-  const [columns, setColumns] = useState<Column[]>(initialColumns);
+  const {
+    orders,
+    customers,
+    isOrderDrawerOpen,
+    isShippingModalOpen,
+    selectedOrderId,
+    moveOrder,
+    openOrderDrawer,
+    closeOrderDrawer,
+    openShippingModal,
+    closeShippingModal
+  } = useOrderStore();
+
+  const [columns, setColumns] = useState<PipelineStageConfig[]>(DEFAULT_PIPELINE_STAGES);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [activeType, setActiveType] = useState<'task' | 'column' | null>(null);
+  const [activeType, setActiveType] = useState<'order' | 'column' | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -337,26 +287,27 @@ export default function KanbanBoard() {
     })
   );
 
-  const findColumnByTaskId = (taskId: string) => {
-    return columns.find(col => col.tasks.some(task => task.id === taskId));
+  const getOrdersByStage = (stageId: PipelineStage): Order[] => {
+    return orders.filter(o => o.pipelineStage === stageId);
   };
 
-  const findTaskById = (taskId: string) => {
-    for (const col of columns) {
-      const task = col.tasks.find(t => t.id === taskId);
-      if (task) return task;
-    }
-    return null;
+  const findColumnByOrderId = (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    return order ? columns.find(col => col.id === order.pipelineStage) : undefined;
+  };
+
+  const findOrderById = (orderId: string) => {
+    return orders.find(o => o.id === orderId);
   };
 
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event;
     const activeIdStr = active.id as string;
 
-    // Check if it's a column or a task
+    // Check if it's a column or an order
     const isColumn = columns.some(col => col.id === activeIdStr);
     setActiveId(activeIdStr);
-    setActiveType(isColumn ? 'column' : 'task');
+    setActiveType(isColumn ? 'column' : 'order');
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -366,41 +317,24 @@ export default function KanbanBoard() {
     const activeIdStr = active.id as string;
     const overIdStr = over.id as string;
 
-    // Only handle task movement
-    if (activeType !== 'task') return;
+    // Only handle order movement
+    if (activeType !== 'order') return;
 
-    const activeColumn = findColumnByTaskId(activeIdStr);
-    const overColumn = findColumnByTaskId(overIdStr) || columns.find(col => col.id === overIdStr);
+    const activeOrder = findOrderById(activeIdStr);
+    if (!activeOrder) return;
 
-    if (!activeColumn || !overColumn || activeColumn.id === overColumn.id) return;
+    // Check if dropping over a column
+    const overColumn = columns.find(col => col.id === overIdStr);
+    if (overColumn && activeOrder.pipelineStage !== overColumn.id) {
+      moveOrder(activeIdStr, overColumn.id as PipelineStage);
+      return;
+    }
 
-    setColumns(cols => {
-      const activeTask = activeColumn.tasks.find(t => t.id === activeIdStr);
-      if (!activeTask) return cols;
-
-      return cols.map(col => {
-        if (col.id === activeColumn.id) {
-          return {
-            ...col,
-            tasks: col.tasks.filter(t => t.id !== activeIdStr)
-          };
-        }
-        if (col.id === overColumn.id) {
-          const overTaskIndex = col.tasks.findIndex(t => t.id === overIdStr);
-          const newTasks = [...col.tasks];
-          if (overTaskIndex >= 0) {
-            newTasks.splice(overTaskIndex, 0, activeTask);
-          } else {
-            newTasks.push(activeTask);
-          }
-          return {
-            ...col,
-            tasks: newTasks
-          };
-        }
-        return col;
-      });
-    });
+    // Check if dropping over another order
+    const overOrder = findOrderById(overIdStr);
+    if (overOrder && activeOrder.pipelineStage !== overOrder.pipelineStage) {
+      moveOrder(activeIdStr, overOrder.pipelineStage);
+    }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -423,27 +357,6 @@ export default function KanbanBoard() {
       if (oldIndex !== newIndex) {
         setColumns(cols => arrayMove(cols, oldIndex, newIndex));
       }
-    } else if (activeType === 'task') {
-      // Reorder tasks within the same column
-      const activeColumn = findColumnByTaskId(activeIdStr);
-      const overColumn = findColumnByTaskId(overIdStr);
-
-      if (activeColumn && overColumn && activeColumn.id === overColumn.id) {
-        const oldIndex = activeColumn.tasks.findIndex(t => t.id === activeIdStr);
-        const newIndex = activeColumn.tasks.findIndex(t => t.id === overIdStr);
-
-        if (oldIndex !== newIndex) {
-          setColumns(cols => cols.map(col => {
-            if (col.id === activeColumn.id) {
-              return {
-                ...col,
-                tasks: arrayMove(col.tasks, oldIndex, newIndex)
-              };
-            }
-            return col;
-          }));
-        }
-      }
     }
 
     setActiveId(null);
@@ -452,12 +365,23 @@ export default function KanbanBoard() {
 
   const handleTitleChange = (columnId: string, newTitle: string) => {
     setColumns(cols => cols.map(col =>
-      col.id === columnId ? { ...col, title: newTitle } : col
+      col.id === columnId ? { ...col, name: newTitle } : col
     ));
   };
 
-  const activeTask = activeId && activeType === 'task' ? findTaskById(activeId) : null;
+  const handleViewDetails = (orderId: string) => {
+    openOrderDrawer(orderId);
+  };
+
+  const handleCreateLabel = (orderId: string) => {
+    openShippingModal(orderId);
+  };
+
+  const activeOrder = activeId && activeType === 'order' ? findOrderById(activeId) : null;
   const activeColumn = activeId && activeType === 'column' ? columns.find(c => c.id === activeId) : null;
+
+  const selectedOrder = selectedOrderId ? orders.find(o => o.id === selectedOrderId) : null;
+  const selectedCustomer = selectedOrder ? customers.find(c => c.id === selectedOrder.customerId) : undefined;
 
   return (
     <div className="flex-1 bg-[#f7f7f7] overflow-hidden flex flex-col min-h-0">
@@ -475,10 +399,13 @@ export default function KanbanBoard() {
           >
             <div className="flex gap-[16px] md:gap-[24px] h-full">
               {columns.map(column => (
-                <SortableColumn
+                <PipelineColumn
                   key={column.id}
-                  column={column}
-                  onTitleChange={handleTitleChange}
+                  stage={column}
+                  orders={getOrdersByStage(column.id as PipelineStage)}
+                  onTitleChange={(newTitle) => handleTitleChange(column.id, newTitle)}
+                  onViewDetails={handleViewDetails}
+                  onCreateLabel={handleCreateLabel}
                 />
               ))}
             </div>
@@ -486,21 +413,50 @@ export default function KanbanBoard() {
         </div>
 
         <DragOverlay>
-          {activeTask && (
-            <div className="rotate-3 shadow-lg">
-              <TaskCard {...activeTask} />
+          {activeOrder && (
+            <div className="rotate-3 shadow-xl">
+              <OrderCard
+                order={activeOrder}
+                customer={customers.find(c => c.id === activeOrder.customerId)}
+                onViewDetails={() => {}}
+                onCreateLabel={() => {}}
+                isDragging
+              />
             </div>
           )}
           {activeColumn && (
-            <div className="opacity-80 bg-[#f7f7f7] p-4 rounded-lg shadow-lg min-w-[220px]">
+            <div className="opacity-80 bg-[#f7f7f7] p-4 rounded-lg shadow-lg min-w-[280px]">
               <div className="flex items-center gap-2">
                 <span>{activeColumn.emoji}</span>
-                <span className="font-medium">{activeColumn.title}</span>
+                <span className="font-medium">{activeColumn.name}</span>
               </div>
             </div>
           )}
         </DragOverlay>
       </DndContext>
+
+      {/* Order Detail Drawer */}
+      {selectedOrder && (
+        <OrderDetailDrawer
+          order={selectedOrder}
+          customer={selectedCustomer}
+          isOpen={isOrderDrawerOpen}
+          onClose={closeOrderDrawer}
+          onCreateLabel={() => {
+            closeOrderDrawer();
+            openShippingModal(selectedOrder.id);
+          }}
+        />
+      )}
+
+      {/* Shipping Modal */}
+      {selectedOrder && (
+        <ShippingModal
+          order={selectedOrder}
+          isOpen={isShippingModalOpen}
+          onClose={closeShippingModal}
+        />
+      )}
     </div>
   );
 }
