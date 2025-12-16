@@ -172,6 +172,8 @@ function CustomerRow({
   );
 }
 
+const ITEMS_PER_PAGE = 20;
+
 export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
   const { customers, orders } = useOrderStore();
 
@@ -180,6 +182,7 @@ export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
   const [sortBy, setSortBy] = useState<'name' | 'totalSpent' | 'orderCount' | 'lastOrderDate'>('lastOrderDate');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filterOptions: { value: FilterOption; label: string }[] = [
     { value: 'all', label: 'All Customers' },
@@ -243,6 +246,23 @@ export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
     }
     return sortOrder === 'desc' ? -comparison : comparison;
   });
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
+
+  // Reset to page 1 when filters change
+  const handleFilterChange = (filter: FilterOption) => {
+    setActiveFilter(filter);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (query: string) => {
+    setSearchQuery(query);
+    setCurrentPage(1);
+  };
 
   // Get customer orders count
   const getCustomerOrders = (customerId: string) => {
@@ -328,7 +348,7 @@ export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
             type="text"
             placeholder="Search by name or email..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-[#6e6af0]"
           />
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
@@ -341,7 +361,7 @@ export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
           {filterOptions.map((option) => (
             <button
               key={option.value}
-              onClick={() => setActiveFilter(option.value)}
+              onClick={() => handleFilterChange(option.value)}
               className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 activeFilter === option.value
                   ? 'bg-[#6e6af0] text-white'
@@ -402,7 +422,7 @@ export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
-            {filteredCustomers.map((customer) => (
+            {paginatedCustomers.map((customer) => (
               <div key={customer.id} className="flex items-start">
                 {/* Selection Checkbox */}
                 <div className="pl-4 py-4 flex items-start">
@@ -435,6 +455,74 @@ export default function CustomerList({ onSelectCustomer }: CustomerListProps) {
           </div>
         )}
       </div>
+
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-between bg-gray-50">
+          <div className="text-sm text-gray-500">
+            Showing {startIndex + 1}-{Math.min(endIndex, filteredCustomers.length)} of {filteredCustomers.length}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="px-2 py-1 text-xs rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="First page"
+            >
+              ««
+            </button>
+            <button
+              onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="px-2 py-1 text-xs rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Previous
+            </button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`w-8 h-8 text-xs rounded ${
+                      currentPage === pageNum
+                        ? 'bg-[#6e6af0] text-white'
+                        : 'border border-gray-200 hover:bg-gray-100'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 text-xs rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="px-2 py-1 text-xs rounded border border-gray-200 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Last page"
+            >
+              »»
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

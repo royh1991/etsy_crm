@@ -74,7 +74,7 @@ function App() {
         return <KanbanBoard />;
       case 'customers':
         return (
-          <div className="flex-1 p-4 md:p-6 overflow-hidden">
+          <div className="flex-1 flex flex-col p-4 md:p-6 min-h-0">
             <CustomerList onSelectCustomer={(id) => openCustomerDrawer(id)} />
           </div>
         );

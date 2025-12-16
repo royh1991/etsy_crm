@@ -13,11 +13,74 @@ npm run dev
 
 ## What Is This?
 
-An **Etsy CRM/Order Management System** for Etsy sellers. Currently a **frontend with mock data** - no backend yet. The UI is fully functional with:
-- Order pipeline (Kanban board)
-- Customer management
+An **Etsy CRM/Order Management System** for Etsy sellers. **Full-stack application** with:
+- **Backend:** Express + Prisma + PostgreSQL (`server/`)
+- **Frontend:** React + Zustand + Tailwind (`src/`)
+
+Features:
+- Order pipeline (Kanban board) with drag-and-drop
+- Customer management with pagination
 - Analytics dashboard
 - Shipping label creation (mock)
+
+---
+
+## Backend (NEW)
+
+### Quick Start
+
+```bash
+cd /Users/rhu/etsy_crm_claude/server
+npm install
+npx prisma generate
+npx prisma db push
+npm run db:seed     # Creates 65 customers + 50 orders
+npm run dev         # Runs at http://localhost:3001
+```
+
+### Backend Stack
+
+| Component | Technology | File |
+|-----------|------------|------|
+| Server | Express + TypeScript | `server/src/index.ts` |
+| ORM | Prisma v5.22.0 | `server/prisma/schema.prisma` |
+| Database | PostgreSQL 14.17 | `server/.env` → `DATABASE_URL` |
+| Auth | JWT + bcryptjs | `server/src/middleware/auth.ts` |
+
+### Database Schema (`server/prisma/schema.prisma`)
+
+Key models:
+- **Shop** - Etsy shop with OAuth tokens, sync settings
+- **Customer** - etsyBuyerId, tier, orderCount, totalSpent
+- **Order** - etsyReceiptId, pipelineStage, shippingAddress (JSON)
+- **OrderItem** - etsyTransactionId, variations (JSON), personalization
+
+### Seed Data (`server/prisma/seed.ts`)
+
+**Lines 314-528:** `CUSTOMERS` array - 15 hand-crafted customers with realistic Etsy buyer data
+
+**Lines 530-651:** Customer generator:
+- `FIRST_NAMES` (50 names), `LAST_NAMES` (50 surnames)
+- `STREET_NAMES` (20 streets), `CITIES_DATA` (30 cities: 25 US + 5 Canadian)
+- `generateAdditionalCustomers(count)` - Creates unique customers with random names/addresses
+- `ALL_CUSTOMERS` - Combines 15 original + 50 generated = **65 total customers**
+
+**Etsy API fidelity:**
+- Real `i.etsystatic.com` image URLs in `ETSY_IMAGES` (lines 24-67)
+- Etsy property_ids in `ETSY_PROPERTIES` (lines 73-83): 200=color, 100=size, 507=material, 508=scent
+- `buildVariations()` generates Etsy-style variation objects with `property_id`, `value_ids[]`, `values[]`
+
+### API Endpoints (`server/src/routes/orders.ts`)
+
+**Development-only endpoints** (no auth required):
+```
+GET /api/orders/dev/all       # Returns all 50 orders with full Etsy-style data
+GET /api/orders/dev/customers # Returns all 65 customers
+```
+
+**Data transformation:**
+- Pipeline stage: DB `READY_TO_SHIP` → frontend `ready-to-ship`
+- Includes customer tier info: `customerTier`, `isRepeatCustomer`, `customerOrderCount`
 
 ---
 
@@ -53,12 +116,22 @@ interface OrderStore {
   orders: Order[];
   customers: Customer[];
 
+  // Loading State (NEW)
+  isLoadingOrders: boolean;
+  ordersError: string | null;
+  isLoadingCustomers: boolean;
+  customersError: string | null;
+
   // UI State
   activeView: 'pipeline' | 'customers' | 'analytics';
   selectedOrderId: string | null;
   isOrderDrawerOpen: boolean;
   isShippingModalOpen: boolean;
   shippingOrderId: string | null;
+
+  // Async Actions (NEW - fetch from backend)
+  fetchOrders(): Promise<void>;      // Fetches from /api/orders/dev/all
+  fetchCustomers(): Promise<void>;   // Fetches from /api/orders/dev/customers
 
   // Actions
   setActiveView(view): void;
@@ -72,6 +145,23 @@ interface OrderStore {
   updateOrderTracking(orderId, carrier, trackingNumber): void;
   addCustomerFlag(customerId, flag): void;
 }
+```
+
+**Backend data fetching (`orderStore.ts` lines 50-150):**
+- `API_BASE` constant: Uses `http://localhost:3001/api` in dev mode
+- `transformBackendOrder()` - Converts backend order to frontend `Order` type:
+  - Transforms `shippingAddress` from `{first_line, zip, country_iso}` to `{addressLine1, postalCode, countryCode}`
+  - Transforms `variations` from Etsy format `[{property_id, values[]}]` to `[{name, value}]`
+  - Maps `taxAmount` → `tax`, `currency` → `currencyCode`
+- `transformBackendCustomer()` - Converts backend customer to frontend `Customer` type
+- Graceful fallback: If API fails, store falls back to `mockOrders`/`mockCustomers`
+
+**App.tsx initialization (line 22-26):**
+```typescript
+useEffect(() => {
+  fetchOrders();
+  fetchCustomers();
+}, []);
 ```
 
 **Usage pattern:**
@@ -192,12 +282,30 @@ const { shippingOrderId, isShippingModalOpen, closeShippingModal } = useOrderSto
 
 ### 5. Customer List
 
-| Feature | Component | File |
-|---------|-----------|------|
-| Customer table/cards | `CustomerList` | `src/components/customer/CustomerList.tsx` |
-| Search | Search input in component | `CustomerList.tsx:40-60` |
-| Filters | Filter chip buttons | `CustomerList.tsx:70-100` |
-| Sorting | Sort dropdown | `CustomerList.tsx:100-130` |
+| Feature | Component | File | Key Lines |
+|---------|-----------|------|-----------|
+| Customer table/cards | `CustomerList` | `src/components/customer/CustomerList.tsx` | Full file |
+| Search | Search input | `CustomerList.tsx` | Line 351 - `handleSearchChange()` |
+| Filters | Filter chip buttons | `CustomerList.tsx` | Lines 360-370 - `handleFilterChange()` |
+| Sorting | Sort dropdown | `CustomerList.tsx` | Lines 227-248 - sort logic |
+| **Pagination** | Pagination controls | `CustomerList.tsx` | Lines 250-265, 459-525 |
+
+**Pagination implementation (`CustomerList.tsx`):**
+- **Line 175:** `ITEMS_PER_PAGE = 20` - configurable constant
+- **Line 185:** `currentPage` state
+- **Lines 250-254:** Pagination calculations:
+  ```typescript
+  const totalPages = Math.ceil(filteredCustomers.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedCustomers = filteredCustomers.slice(startIndex, endIndex);
+  ```
+- **Lines 256-265:** `handleFilterChange()` and `handleSearchChange()` reset page to 1
+- **Lines 459-525:** Pagination UI with:
+  - "Showing X-Y of Z" indicator
+  - First (««), Previous, page numbers, Next, Last (»») buttons
+  - Smart page windowing (shows 5 pages centered on current)
+  - Disabled states for boundary buttons
 
 **Filter options:**
 - All Customers
@@ -468,24 +576,55 @@ User drags OrderCard to new column
 
 ---
 
-## NOT Built Yet (Backend Required)
+## NOT Built Yet
 
-- [ ] Etsy OAuth authentication
-- [ ] Etsy API order sync
-- [ ] Real shipping label purchase (Shippo)
+**Backend exists but these features need implementation:**
+
+- [ ] Etsy OAuth authentication (backend auth middleware exists, needs Etsy OAuth flow)
+- [ ] Etsy API order sync (endpoints stubbed, needs real Etsy API integration)
+- [ ] Real shipping label purchase (Shippo API integration)
 - [ ] Tracking auto-submission to Etsy
-- [ ] Database persistence
 - [ ] Multi-user support
 - [ ] Real-time updates (WebSocket)
+
+**Already completed:**
+- [x] Database persistence (PostgreSQL + Prisma)
+- [x] Backend API (Express at localhost:3001)
+- [x] Frontend-backend data flow (Zustand fetches from API)
+- [x] High-fidelity Etsy mock data (50 orders, 65 customers)
 
 ---
 
 ## Common Commands
 
+**Frontend:**
 ```bash
-npm run dev           # Start dev server
+cd /Users/rhu/etsy_crm_claude
+npm run dev           # Start frontend at localhost:5176
 npm run build         # Build for production
 npm run preview       # Preview production build
+```
+
+**Backend:**
+```bash
+cd /Users/rhu/etsy_crm_claude/server
+npm run dev           # Start backend at localhost:3001
+npm run db:seed       # Seed database (65 customers, 50 orders)
+npx prisma studio     # Open Prisma Studio GUI at localhost:5555
+npx prisma db push    # Sync schema to database
+```
+
+**Database:**
+```bash
+psql -d etsy_crm -c 'SELECT COUNT(*) FROM customers;'  # Count customers
+psql -d etsy_crm -c 'SELECT COUNT(*) FROM orders;'     # Count orders
+```
+
+**API Testing:**
+```bash
+curl http://localhost:3001/api/health                   # Health check
+curl http://localhost:3001/api/orders/dev/all           # Get all orders
+curl http://localhost:3001/api/orders/dev/customers     # Get all customers
 ```
 
 ---

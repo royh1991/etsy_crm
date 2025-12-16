@@ -528,6 +528,129 @@ const CUSTOMERS: CustomerData[] = [
 ];
 
 // ============================================
+// GENERATED ADDITIONAL CUSTOMERS (50 more)
+// ============================================
+const FIRST_NAMES = [
+  'Olivia', 'Noah', 'Ava', 'Liam', 'Sophia', 'Mason', 'Isabella', 'Ethan',
+  'Mia', 'Lucas', 'Harper', 'Oliver', 'Evelyn', 'Aiden', 'Luna', 'Elijah',
+  'Camila', 'Logan', 'Gianna', 'James', 'Aria', 'Benjamin', 'Riley', 'Henry',
+  'Zoey', 'Alexander', 'Nora', 'Sebastian', 'Lily', 'Jack', 'Eleanor', 'Daniel',
+  'Hazel', 'Matthew', 'Violet', 'Owen', 'Aurora', 'Samuel', 'Savannah', 'Joseph',
+  'Audrey', 'Wyatt', 'Brooklyn', 'Carter', 'Bella', 'John', 'Claire', 'Luke',
+  'Skylar', 'Dylan'
+];
+
+const LAST_NAMES = [
+  'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez',
+  'Gonzalez', 'Perez', 'Taylor', 'Anderson', 'Thomas', 'Jackson', 'White',
+  'Harris', 'Martin', 'Thompson', 'Young', 'Allen', 'King', 'Wright', 'Scott',
+  'Torres', 'Nguyen', 'Hill', 'Flores', 'Green', 'Adams', 'Nelson', 'Baker',
+  'Hall', 'Rivera', 'Campbell', 'Mitchell', 'Carter', 'Roberts', 'Gomez',
+  'Phillips', 'Evans', 'Turner', 'Diaz', 'Parker', 'Cruz', 'Edwards', 'Collins',
+  'Reyes', 'Stewart', 'Morris', 'Morales', 'Murphy'
+];
+
+const STREET_NAMES = [
+  'Main Street', 'Oak Avenue', 'Maple Drive', 'Cedar Lane', 'Pine Road',
+  'Elm Street', 'Washington Boulevard', 'Park Avenue', 'Lake View Drive',
+  'Highland Avenue', 'River Road', 'Sunset Boulevard', 'Spring Street',
+  'Forest Lane', 'Valley View Road', 'Mountain Avenue', 'Harbor Drive',
+  'Garden Way', 'Meadow Lane', 'Willow Street'
+];
+
+const CITIES_DATA = [
+  { city: 'Denver', state: 'CO', zip: '80202' },
+  { city: 'Phoenix', state: 'AZ', zip: '85001' },
+  { city: 'San Diego', state: 'CA', zip: '92101' },
+  { city: 'Dallas', state: 'TX', zip: '75201' },
+  { city: 'Houston', state: 'TX', zip: '77001' },
+  { city: 'Philadelphia', state: 'PA', zip: '19101' },
+  { city: 'San Antonio', state: 'TX', zip: '78201' },
+  { city: 'San Jose', state: 'CA', zip: '95101' },
+  { city: 'Jacksonville', state: 'FL', zip: '32099' },
+  { city: 'Indianapolis', state: 'IN', zip: '46201' },
+  { city: 'Columbus', state: 'OH', zip: '43201' },
+  { city: 'Fort Worth', state: 'TX', zip: '76101' },
+  { city: 'Charlotte', state: 'NC', zip: '28201' },
+  { city: 'Detroit', state: 'MI', zip: '48201' },
+  { city: 'El Paso', state: 'TX', zip: '79901' },
+  { city: 'Memphis', state: 'TN', zip: '38101' },
+  { city: 'Baltimore', state: 'MD', zip: '21201' },
+  { city: 'Milwaukee', state: 'WI', zip: '53201' },
+  { city: 'Albuquerque', state: 'NM', zip: '87101' },
+  { city: 'Tucson', state: 'AZ', zip: '85701' },
+  { city: 'Nashville', state: 'TN', zip: '37201' },
+  { city: 'Sacramento', state: 'CA', zip: '95801' },
+  { city: 'Kansas City', state: 'MO', zip: '64101' },
+  { city: 'Las Vegas', state: 'NV', zip: '89101' },
+  { city: 'Portland', state: 'OR', zip: '97201' },
+  { city: 'Calgary', state: 'AB', zip: 'T2P 1J9', country: 'CA' },
+  { city: 'Montreal', state: 'QC', zip: 'H2Y 1C6', country: 'CA' },
+  { city: 'Edmonton', state: 'AB', zip: 'T5J 0N3', country: 'CA' },
+  { city: 'Winnipeg', state: 'MB', zip: 'R3C 0V8', country: 'CA' },
+  { city: 'Halifax', state: 'NS', zip: 'B3J 2S9', country: 'CA' },
+];
+
+function generateAdditionalCustomers(count: number): CustomerData[] {
+  const additionalCustomers: CustomerData[] = [];
+  const usedNames = new Set(CUSTOMERS.map(c => c.name));
+  const usedEmails = new Set(CUSTOMERS.map(c => c.email));
+
+  for (let i = 0; i < count; i++) {
+    let name: string;
+    let email: string;
+
+    // Generate unique name
+    do {
+      const firstName = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+      const lastName = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+      name = `${firstName} ${lastName}`;
+    } while (usedNames.has(name));
+    usedNames.add(name);
+
+    // Generate unique email based on name
+    const nameParts = name.toLowerCase().split(' ');
+    const baseEmail = `${nameParts[0]}.${nameParts[1]}`;
+    email = `${baseEmail}@email.com`;
+
+    // If email exists, add a number suffix
+    let suffix = 1;
+    while (usedEmails.has(email)) {
+      email = `${baseEmail}${suffix}@email.com`;
+      suffix++;
+    }
+    usedEmails.add(email);
+
+    const cityData = CITIES_DATA[Math.floor(Math.random() * CITIES_DATA.length)];
+    const streetNum = Math.floor(Math.random() * 9000) + 100;
+    const streetName = STREET_NAMES[Math.floor(Math.random() * STREET_NAMES.length)];
+    const isCanada = cityData.country === 'CA';
+    const country_iso = isCanada ? 'CA' : 'US';
+    const countryName = isCanada ? 'Canada' : 'United States';
+
+    additionalCustomers.push({
+      name,
+      email,
+      etsyBuyerId: String(Math.floor(Math.random() * 900000000) + 100000000),
+      addresses: [{
+        name,
+        first_line: `${streetNum} ${streetName}`,
+        city: cityData.city,
+        state: cityData.state,
+        zip: cityData.zip,
+        country_iso,
+        formatted_address: `${streetNum} ${streetName}, ${cityData.city}, ${cityData.state} ${cityData.zip}, ${countryName}`,
+      }],
+    });
+  }
+
+  return additionalCustomers;
+}
+
+// Combine original customers with 50 generated ones
+const ALL_CUSTOMERS = [...CUSTOMERS, ...generateAdditionalCustomers(50)];
+
+// ============================================
 // HELPER FUNCTIONS
 // ============================================
 function randomElement<T>(arr: T[]): T {
@@ -720,7 +843,7 @@ async function main() {
   console.log('👥 Creating customers...');
   const customerMap = new Map<string, { id: string; orderCount: number; totalSpent: number }>();
 
-  for (const customerData of CUSTOMERS) {
+  for (const customerData of ALL_CUSTOMERS) {
     const customer = await prisma.customer.create({
       data: {
         shopId: shop.id,
@@ -735,7 +858,7 @@ async function main() {
     });
     customerMap.set(customerData.email, { id: customer.id, orderCount: 0, totalSpent: 0 });
   }
-  console.log(`   ✓ ${CUSTOMERS.length} customers created`);
+  console.log(`   ✓ ${ALL_CUSTOMERS.length} customers created`);
 
   // Generate 50 orders
   console.log('📦 Creating 50 orders with Etsy API-style data...\n');
@@ -755,7 +878,7 @@ async function main() {
   ];
 
   for (let i = 0; i < 50; i++) {
-    const customerData = randomElement(CUSTOMERS);
+    const customerData = randomElement(ALL_CUSTOMERS);
     const customerInfo = customerMap.get(customerData.email)!;
     const address = randomElement(customerData.addresses);
 
@@ -966,7 +1089,7 @@ async function main() {
       status: 'COMPLETED',
       ordersCreated: 50,
       ordersUpdated: 0,
-      customersCreated: CUSTOMERS.length,
+      customersCreated: ALL_CUSTOMERS.length,
       customersUpdated: 0,
       completedAt: new Date(),
     },
@@ -1012,7 +1135,7 @@ async function main() {
   console.log('📊 Summary:');
   console.log(`   • 1 shop created`);
   console.log(`   • 1 user created`);
-  console.log(`   • ${CUSTOMERS.length} customers created`);
+  console.log(`   • ${ALL_CUSTOMERS.length} customers created`);
   console.log(`   • 50 orders created with Etsy API-style data`);
   console.log(`   • ${templates.length} message templates created`);
   console.log(`   • Customer flags and sync logs created`);
